@@ -2,7 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
-    show_pw: "Show password", hide_pw: "Hide password", err_email_limit: "Too many emails were sent in the last hour. Wait a bit, or ask the owner to turn off email confirmation.", err_not_confirmed: "Please confirm your email first (check your inbox), then log in.",
+    show_pw: "Show password", hide_pw: "Hide password", err_email_limit: "Supabase can only send a few emails per hour. Wait about an hour, or turn off Confirm email in Supabase (Authentication → Sign In / Providers → Email).", err_not_confirmed: "Please confirm your email first (check your inbox), then log in.",
     push_title: "Phone notifications",
     push_on: "On: alerts come to this phone, even when Trackly is closed.",
     push_off: "Off",
@@ -206,7 +206,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
-    show_pw: "پیشاندانی وشەی نهێنی", hide_pw: "شاردنەوەی وشەی نهێنی", err_email_limit: "لە کاتژمێری ڕابردوودا ئیمەیڵی زۆر نێردراوە. کەمێک چاوەڕێ بکە.", err_not_confirmed: "تکایە سەرەتا ئیمەیڵەکەت پشتڕاست بکەرەوە، پاشان بچۆ ژوورەوە.",
+    show_pw: "پیشاندانی وشەی نهێنی", hide_pw: "شاردنەوەی وشەی نهێنی", err_email_limit: "Supabase تەنها چەند ئیمەیڵێک لە کاتژمێرێکدا دەنێرێت. نزیکەی کاتژمێرێک چاوەڕێ بکە، یان Confirm email لە Supabase بکوژێنەوە.", err_not_confirmed: "تکایە سەرەتا ئیمەیڵەکەت پشتڕاست بکەرەوە، پاشان بچۆ ژوورەوە.",
     push_title: "ئاگادارکردنەوەی مۆبایل",
     push_on: "هەڵکراوە: ئاگادارکردنەوەکان دێنە ئەم مۆبایلە، تەنانەت کاتێک Trackly داخراوە.",
     push_off: "کوژاوە",
@@ -408,7 +408,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
-    show_pw: "إظهار كلمة المرور", hide_pw: "إخفاء كلمة المرور", err_email_limit: "تم إرسال رسائل كثيرة خلال الساعة الماضية. انتظر قليلاً.", err_not_confirmed: "يرجى تأكيد بريدك الإلكتروني أولاً، ثم تسجيل الدخول.",
+    show_pw: "إظهار كلمة المرور", hide_pw: "إخفاء كلمة المرور", err_email_limit: "يرسل Supabase عدداً قليلاً من الرسائل في الساعة. انتظر حوالي ساعة، أو أوقف Confirm email في Supabase.", err_not_confirmed: "يرجى تأكيد بريدك الإلكتروني أولاً، ثم تسجيل الدخول.",
     push_title: "إشعارات الهاتف",
     push_on: "مفعّلة: تصل التنبيهات إلى هذا الهاتف حتى عندما يكون Trackly مغلقاً.",
     push_off: "متوقفة",
