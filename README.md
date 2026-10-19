@@ -17,8 +17,8 @@ A service worker doesn't work from a double-clicked file, so use a small local s
 - VS Code: install the "Live Server" extension, right-click `index.html`, then "Open with Live Server"
 - or in a terminal inside this folder: `npx serve .`
 
-## Test mode (on right now)
-`js/config.js` has `fakeBackend: true`. The app then uses `js/fake-backend.js`: a pretend login and a
+## Test mode (off by default; switch in Account)
+In test mode (Account → "Real database" off) the app uses `js/fake-backend.js`: a pretend login and a
 pretend tracker moving around Erbil, all saved in this browser only. A red "TEST MODE" label shows at the top.
 
 1. Create any account (e.g. `test@test.com` / `123456`). No email is sent.

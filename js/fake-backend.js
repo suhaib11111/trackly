@@ -20,6 +20,8 @@
 */
 (function () {
   'use strict';
+  // real database chosen: this file does nothing at all (no pretend tracker, no GPS, no TEST MODE label)
+  if (!(window.TRACKLY_CONFIG && window.TRACKLY_CONFIG.fakeBackend)) return;
 
   const KEY = 'trackly.fake.db';
   const DEVICES = { 'SB-0001': 'demo1234', 'SB-0002': 'demo1234' };

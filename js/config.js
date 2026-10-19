@@ -3,8 +3,8 @@
 window.TRACKLY_CONFIG = {
   // true  = TEST MODE: pretend login + pretend tracker, saved in this browser only (see js/fake-backend.js)
   // false = the real Supabase project below
-  // Test mode (pretend data in this browser) unless "Real database" is switched on in Account.
-  fakeBackend: (() => { try { return localStorage.getItem('trackly-backend') !== 'real'; } catch (e) { return true; } })(),
+  // Real database by default. Test mode (pretend data in this browser only) if switched on in Account.
+  fakeBackend: (() => { try { return localStorage.getItem('trackly-backend') === 'test'; } catch (e) { return false; } })(),
   // Google sign-in: set to true after setting it up (docs/google-login.md)
   googleLogin: false,
 
