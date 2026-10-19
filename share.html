@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Trackly · Live bag location</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* Share page: full-screen map + one card. Uses the app's colours (css/styles.css). */
+    .share-card { position: absolute; z-index: 600; left: 12px; right: 12px; bottom: calc(12px + var(--safe-bottom));
+      max-width: 520px; margin: 0 auto; background: var(--card); border-radius: 22px; box-shadow: var(--shadow); padding: 16px 18px;
+      display: flex; flex-direction: column; gap: 10px; }
+    .share-top { position: absolute; z-index: 600; left: 12px; right: 12px; top: calc(12px + var(--safe-top)); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .share-top .pill { height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 10px; }
+    .share-ended { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
+    .share-ended div { max-width: 340px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+  </style>
+</head>
+<body>
+  <div id="map" aria-label="Map"></div>
+  <div class="share-top">
+    <div class="pill"><span class="logo">Trackly</span></div>
+    <span id="live" class="live-badge" hidden><span class="dot"></span><span>LIVE</span></span>
+  </div>
+  <section id="card" class="share-card" hidden>
+    <div class="row-between">
+      <div><h2 id="name">—</h2><p id="area" class="muted small">—</p></div>
+      <a id="go" class="icon-btn" target="_blank" rel="noopener" aria-label="Directions">
+        <svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
+      </a>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="stat-label" data-s="updated"></span><span id="updated" class="stat-value">—</span></div>
+      <div class="stat"><span class="stat-label" data-s="battery"></span><span id="battery" class="stat-value">—</span></div>
+      <div class="stat"><span class="stat-label" data-s="ends"></span><span id="ends" class="stat-value">—</span></div>
+    </div>
+    <p class="muted tiny center" data-s="private"></p>
+  </section>
+  <div id="ended" class="share-ended" hidden>
+    <div><span class="brand-mark" style="width:56px;height:56px;border-radius:17px;display:grid;place-items:center"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span>
+      <h2 data-s="ended_t"></h2><p class="muted" data-s="ended_s"></p></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.1.1/leaflet-maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/fake-backend.js"></script>
+  <script>
+  // Someone shared their bag with you: show where it is, refresh every 10 s, stop when the link ends.
+  (function () {
+    'use strict';
+    const TXT = {
+      en: { updated: 'Updated', battery: 'Battery', ends: 'Link ends', private: 'Shared privately with you. The link stops working by itself.', ended_t: 'This link has ended', ended_s: 'Ask the owner to share a new link.', now: 'just now', min: '{n} min ago', h: '{n} h' },
+      ckb: { updated: 'نوێکرایەوە', battery: 'پاتری', ends: 'کۆتایی لینک', private: 'بە تایبەتی لەگەڵ تۆ هاوبەش کراوە. لینکەکە خۆی دەوەستێت.', ended_t: 'ئەم لینکە کۆتایی هات', ended_s: 'داوا لە خاوەنەکەی بکە لینکێکی نوێ بنێرێت.', now: 'ئێستا', min: '{n} خولەک لەمەوبەر', h: '{n} کاتژمێر' },
+      ar: { updated: 'آخر تحديث', battery: 'البطارية', ends: 'ينتهي الرابط', private: 'تمت مشاركته معك بشكل خاص. يتوقف الرابط تلقائياً.', ended_t: 'انتهى هذا الرابط', ended_s: 'اطلب من المالك مشاركة رابط جديد.', now: 'الآن', min: 'قبل {n} د', h: '{n} س' }
+    };
+    const nav = (navigator.language || 'en').toLowerCase();
+    const lang = (() => { try { const s = localStorage.getItem('trackly-lang'); if (s && TXT[s]) return s; } catch (e) {} return nav.startsWith('ar') ? 'ar' : (nav.startsWith('ku') || nav.startsWith('ckb') ? 'ckb' : 'en'); })();
+    const T = TXT[lang];
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'en' ? 'ltr' : 'rtl';
+    try { const th = localStorage.getItem('trackly-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+    document.querySelectorAll('[data-s]').forEach((el) => { el.textContent = T[el.dataset.s]; });
+    const $ = (id) => document.getElementById(id);
+
+    const CFG = window.TRACKLY_CONFIG;
+    const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+    const token = new URLSearchParams(location.search).get('t') || '';
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const m = L.map('map', { zoomControl: false }).setView([36.1911, 44.0092], 15);
+    const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+    (L.maplibreGL && webgl
+      ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: '&copy; OpenFreeMap &copy; OpenStreetMap' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' })).addTo(m);
+    let marker = null, trail = null, first = true;
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+
+    async function refresh() {
+      const { data } = await sb.rpc('get_shared_location', { p_token: token });
+      if (!data) { $('ended').hidden = false; $('card').hidden = true; $('map').style.visibility = 'hidden'; return false; }
+      $('card').hidden = false;
+      $('name').textContent = data.name || 'Trackly';
+      $('live').hidden = data.mode !== 'lost';
+      const l = data.last;
+      const ends = (new Date(data.expires_at) - Date.now()) / 3600e3;
+      $('ends').textContent = T.h.replace('{n}', ends < 1 ? '<1' : Math.round(ends));
+      if (!l) return true;
+      const age = (Date.now() - new Date(l.created_at)) / 60000;
+      $('updated').textContent = age < 1 ? T.now : T.min.replace('{n}', Math.round(age));
+      $('battery').textContent = typeof l.battery === 'number' ? l.battery + '%' : '—';
+      $('go').href = 'https://www.google.com/maps/dir/?api=1&destination=' + l.lat + ',' + l.lng;
+      const icon = L.divIcon({ className: '', iconSize: [44, 44], iconAnchor: [22, 22],
+        html: '<div class="bag-marker ' + (data.mode === 'lost' ? 'lost' : '') + '"><span class="pulse"></span><span class="core"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span></div>' });
+      if (!marker) marker = L.marker([l.lat, l.lng], { icon }).addTo(m); else { marker.setLatLng([l.lat, l.lng]); marker.setIcon(icon); }
+      if (trail) m.removeLayer(trail);
+      if ((data.trail || []).length > 1) trail = L.polyline(data.trail, { color: data.mode === 'lost' ? '#D93A3F' : accent, weight: 4, dashArray: '2 8', lineCap: 'round' }).addTo(m);
+      if (first) { m.setView([l.lat, l.lng], 17); first = false; }
+      // street name (OpenStreetMap), once per spot
+      const key = l.lat.toFixed(3) + ',' + l.lng.toFixed(3);
+      if (refresh.key !== key) {
+        refresh.key = key;
+        fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=16&lat=' + l.lat + '&lon=' + l.lng + '&accept-language=' + (lang === 'ckb' ? 'ckb,ku,ar' : lang))
+          .then((r) => r.json()).then((d) => { const a = d.address || {}; $('area').textContent = [a.neighbourhood || a.suburb || a.road, a.city || a.town].filter(Boolean).join(', '); }).catch(() => {});
+      }
+      return true;
+    }
+    refresh().then((ok) => { if (ok) setInterval(refresh, 10000); });
+  })();
+  </script>
+</body>
+</html>

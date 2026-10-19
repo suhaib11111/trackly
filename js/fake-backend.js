@@ -37,7 +37,7 @@
   };
 
   // ---------- storage ----------
-  const empty = () => ({ users: [], session: null, trackers: [], locations: [], safe_zones: [], silent: {} });
+  const empty = () => ({ users: [], session: null, trackers: [], locations: [], safe_zones: [], silent: {}, shares: [], preorders: [], claim_fails: [] });
   function load() {
     try { return Object.assign(empty(), JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return empty(); }
   }
@@ -144,10 +144,29 @@
   // ---------- database functions (what the real SQL will do) ----------
   async function rpc(name, args) {
     await wait(250);
+    // these two work without logging in (family links, website pre-orders)
+    if (name === 'get_shared_location') {
+      const sh = db.shares.find((x) => x.token === args.p_token && new Date(x.expires_at) > new Date());
+      if (!sh) return ok(null);
+      const tr = db.trackers.find((t) => t.id === sh.tracker_id);
+      const pts = db.locations.filter((l) => l.tracker_id === sh.tracker_id).slice(-120);
+      const last = pts[pts.length - 1];
+      return ok({ name: tr ? tr.name : '', mode: tr ? tr.mode : 'normal', expires_at: sh.expires_at, last: last || null,
+        trail: pts.filter((l) => Date.now() - new Date(l.created_at) < 30 * 60e3).map((l) => [l.lat, l.lng]) });
+    }
+    if (name === 'submit_preorder') {
+      if (!String(args.p_name || '').trim() || !/^[+0-9 ]{7,20}$/.test(String(args.p_phone || '').trim())) return fail('bad_input');
+      db.preorders.push({ name: args.p_name, phone: args.p_phone, city: args.p_city || '', note: args.p_note || '', at: new Date().toISOString() });
+      save();
+      return ok(db.preorders.length);
+    }
     if (!me()) return fail('not signed in');
     if (name === 'claim_tracker') {
       const code = String(args.p_code || '').trim().toUpperCase();
-      if (DEVICES[code] !== String(args.p_secret || '').trim()) return fail('invalid_code');
+      // like the real database: max 10 wrong tries in 15 minutes, and a wrong code just returns nothing
+      const recent = db.claim_fails.filter((x) => x.user === me() && Date.now() - x.at < 15 * 60e3);
+      if (recent.length >= 10) return fail('too_many_attempts');
+      if (DEVICES[code] !== String(args.p_secret || '').trim()) { db.claim_fails.push({ user: me(), at: Date.now() }); save(); return ok(null); }
       const existing = db.trackers.find((t) => t.device_code === code);
       if (existing && existing.owner_id !== me()) return fail('already_paired');
       if (existing) return ok(existing.id);
@@ -164,6 +183,27 @@
       tr.mode = args.p_mode; save();
       emit('UPDATE', 'trackers', tr);
       return ok(null);
+    }
+    const mineTr = (id) => db.trackers.find((t) => t.id === id && t.owner_id === me());
+    if (name === 'request_buzz') {
+      const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      tr.buzz_requested_at = new Date().toISOString(); save();
+      return ok(null);
+    }
+    if (name === 'set_tracker_info') {
+      const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      if (args.p_name) tr.name = String(args.p_name).slice(0, 40);
+      if (args.p_color && /^#[0-9A-Fa-f]{6}$/.test(args.p_color)) tr.color = args.p_color;
+      save(); emit('UPDATE', 'trackers', tr);
+      return ok(null);
+    }
+    if (name === 'create_share_link') {
+      const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      const hours = Math.min(72, Math.max(1, Number(args.p_hours) || 4));
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(16))).map((b) => b.toString(16).padStart(2, '0')).join('');
+      db.shares.push({ token, tracker_id: tr.id, owner_id: me(), expires_at: new Date(Date.now() + hours * 3600e3).toISOString() });
+      save();
+      return ok(token);
     }
     return fail('function ' + name + ' does not exist');
   }

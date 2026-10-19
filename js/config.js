@@ -3,7 +3,8 @@
 window.TRACKLY_CONFIG = {
   // true  = TEST MODE: pretend login + pretend tracker, saved in this browser only (see js/fake-backend.js)
   // false = the real Supabase project below
-  fakeBackend: true,
+  // Test mode (pretend data in this browser) unless "Real database" is switched on in Account.
+  fakeBackend: (() => { try { return localStorage.getItem('trackly-backend') !== 'real'; } catch (e) { return true; } })(),
   // test mode only: the pretend tracker follows THIS phone's real GPS (needs https). false = pretend route in Erbil
   usePhoneGps: true,
 

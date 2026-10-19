@@ -27,7 +27,7 @@
     historyDate: null,
     areaCache: {},
     areaKey: null,
-    mapStyle: (() => { const v = localStorage.getItem('trackly-map-style'); return ['clean', 'detailed', 'sat', 'hybrid'].includes(v) ? v : (v === 'sat' ? 'sat' : 'clean'); })(),
+    mapStyle: (() => { const v = localStorage.getItem('trackly-map-style'); return ['clean', 'detailed', 'sat', 'hybrid'].includes(v) ? v : (v === 'sat' ? 'sat' : 'detailed'); })(),
     showPath: localStorage.getItem('trackly-show-path') === '1',   // today's path on the main map
     historyPts: [],
     me: null                // the phone's own location { lat, lng, acc }, after "My location"
@@ -83,6 +83,7 @@
     const msg = (err && (err.message || err.error_description)) || '';
     if (msg.includes('invalid_code')) return t('err_invalid_code');
     if (msg.includes('already_paired')) return t('err_already_paired');
+    if (msg.includes('too_many')) return t('err_too_many');
     if (msg.toLowerCase().includes('invalid login')) return t('err_login');
     if (msg && msg.length < 140 && !msg.includes('fetch')) return msg;
     return t('err_generic');
@@ -131,6 +132,7 @@
     updateAuthButton();
     state.areaKey = null;
     if (state.tracker) { renderMapPanel(); renderZones(); if (state.tab === 'history') loadHistory(); }
+    if (map.m) { renderPlacesBar(); renderPlaces(); renderAlerts(); }
   }
 
   function cycleLang() {
@@ -241,7 +243,7 @@
   }
 
   async function loadTrackers() {
-    const { data, error } = await sb.from('trackers').select('id, device_code, name, mode').order('created_at');
+    const { data, error } = await sb.from('trackers').select('id, device_code, name, mode, color').order('created_at');
     if (error) { toast(errorText(error)); state.trackers = []; return; }
     state.trackers = data || [];
     const sel = $('#tracker-select');
@@ -252,6 +254,7 @@
       o.textContent = tr.name || tr.device_code;
       sel.appendChild(o);
     });
+    renderBags();
   }
 
   // ---------- pairing ----------
@@ -268,6 +271,7 @@
     try {
       const { data, error } = await sb.rpc('claim_tracker', { p_code: code, p_secret: secret, p_name: name || null });
       if (error) throw error;
+      if (!data) throw new Error('invalid_code');
       saveTracker(code.toUpperCase(), secret, name);
       $('#pair-form').reset();
       await loadTrackers();
@@ -308,6 +312,9 @@
     // while adding a safe zone, a tap on the map moves the pin there
     map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) placePinAt(e.latlng); });
     map.zones = L.layerGroup().addTo(map.m);
+    renderPlacesBar();
+    let placesTimer = null;
+    map.m.on('moveend zoomend', () => { clearTimeout(placesTimer); placesTimer = setTimeout(loadPlaces, 400); });
     // the floating map buttons sit just above the bottom card, whatever its height
     if (window.ResizeObserver) new ResizeObserver(() => {
       document.documentElement.style.setProperty('--sheet-h', $('#sheet').offsetHeight + 'px');
@@ -426,6 +433,7 @@
         if (w.forZone) placePinAt(L.latLng(state.me.lat, state.me.lng)); else if (w.fly) showMeAndBag();
       }
       if (!state.zoneEdit) renderMapPanel();
+      renderFind();
     };
     // a quick first answer (the phone's last known spot), then live updates as you move
     navigator.geolocation.getCurrentPosition(onFix, () => {}, { maximumAge: 60000, timeout: 8000 });
@@ -537,7 +545,7 @@
   }
   function drawPath() {
     if (map.path) { map.m.removeLayer(map.path); map.path = null; }
-    if ($('#btn-path')) $('#btn-path').classList.toggle('active', state.showPath);
+    if ($('#btn-path')) $('#btn-path').setAttribute('aria-checked', String(state.showPath));
     if (!state.showPath || !state.tracker || state.tab !== 'map' || state.zoneEdit) return;
     if (pathFor !== state.tracker.id) { pathFor = state.tracker.id; loadPath(); return; }
     // keep it in step with live points
@@ -587,9 +595,12 @@
 
     state.channel = sb.channel('tracker-' + id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'locations', filter: 'tracker_id=eq.' + id }, (payload) => {
+        const before = state.recent[0];
         state.recent.unshift(payload.new);
         if (state.recent.length > 200) state.recent.length = 200;
+        checkAlerts(before, payload.new);
         renderMapPanel();
+        renderFind();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trackers', filter: 'id=eq.' + id }, (payload) => {
         Object.assign(state.tracker, { mode: payload.new.mode, name: payload.new.name });
@@ -600,6 +611,7 @@
     renderMapPanel();
     renderZones();
     if (state.tab === 'history') loadHistory();
+    estimateBattery();
   }
 
   function unsubscribe() {
@@ -620,6 +632,7 @@
     $('#normal-actions').hidden = lost;
     $('#hold-help').hidden = lost;
     $('#lost-actions').hidden = !lost;
+    $('#lost-report').hidden = !lost;
 
     const chip = $('#mode-chip');
     chip.classList.toggle('lost', lost);
@@ -675,6 +688,9 @@
     }
     const battery = typeof loc.battery === 'number' ? loc.battery : null;
     $('#stat-battery').textContent = battery === null ? '—' : battery + '%';
+    $('#stat-battery-sub').textContent = lost ? '' : batteryLeftText(battery, false);
+    $('#stat-battery').parentElement.classList.toggle('low', battery !== null && battery <= CFG.lowBatteryPercent);
+    $('#pill-dot').style.background = bagColor(tr);
 
     if (lost && battery !== null) {
       $('#stat-2-label').textContent = t('time_left');
@@ -751,6 +767,7 @@
     updateCenterBtn();
 
     updateArea(loc.lat, loc.lng, stale);
+    updateNear(loc);
   }
 
   // Area name from OpenStreetMap (cached, rounded so we don't call it too often)
@@ -836,6 +853,8 @@
     if (tab === 'zones') drawZones(true);
     if (tab === 'map') { state.followBag = true; drawZones(false); }
     $('#map-controls').hidden = tab === 'history' || tab === 'account';
+    if (tab === 'account') { renderAlerts(); renderBags(); }
+    renderPlaces();
     renderMapPanel();
   }
 
@@ -914,8 +933,16 @@
     const last = pts[pts.length - 1];
     if (pts.length > 1) events.push({ time: last.created_at, title: t('last_point'), sub: typeof last.battery === 'number' ? t('battery') + ' ' + last.battery + '%' : '' });
 
+    const stops = findStops(pts);
+    stops.forEach((s, k) => {
+      events.push({ time: s.from, title: t('stop'), sub: fmtDuration(s.mins) + ' · ' + clockTime(s.from) + '–' + clockTime(s.to), stop: s, n: k + 1 });
+      L.marker([s.lat, s.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="stop-pin">' + (k + 1) + '</div>' }) }).addTo(group);
+    });
+    events.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    if (stops.length) $('#history-summary').textContent += ' · ' + t('stops_n', { n: stops.length });
     events.forEach((ev) => {
       const li = document.createElement('li');
+      if (ev.stop) { li.className = 'is-stop'; li.dataset.n = ev.n; }
       const time = document.createElement('time');
       time.textContent = clockTime(ev.time);
       const box = document.createElement('div');
@@ -923,6 +950,8 @@
       strong.textContent = ev.title;
       box.appendChild(strong);
       if (ev.sub) { const span = document.createElement('span'); span.textContent = ev.sub; box.appendChild(span); }
+      if (ev.stop) stopName(ev.stop).then((nm) => { strong.textContent = ev.n + '. ' + nm; });
+      if (ev.stop) li.addEventListener('click', () => map.m.setView([ev.stop.lat, ev.stop.lng], 17));
       li.append(time, box);
       list.appendChild(li);
     });
@@ -1222,6 +1251,682 @@
     if (state.zoneEdit && map.editCircle) map.editCircle.setLatLng(pinLatLng());
   }
 
+  // =====================================================================
+  // PLACES — shops, restaurants, pharmacies, banks… from OpenStreetMap (free).
+  // Loaded for the part of the map you're looking at (zoom 15+), cached in ~1 km squares.
+  // =====================================================================
+  const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
+  const PLACE_GROUPS = {
+    food: { color: '#F97316', icon: 'M7 3v7a2 2 0 0 0 2 2v9M5 3v5a2 2 0 0 0 4 0V3M17 21V3c-2 1-3 3-3 6v5h3' },
+    shop: { color: '#8B5CF6', icon: 'M6 8h12l1 12H5L6 8zM9 8V6a3 3 0 0 1 6 0v2' },
+    health: { color: '#EC4899', icon: 'M12 5v14M5 12h14' },
+    money: { color: '#0284C7', icon: 'M3 7h18v10H3zM12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z' },
+    fuel: { color: '#475569', icon: 'M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M14 9h2l2 2v6a1.5 1.5 0 0 0 3 0V8l-3-3M7 8h5' },
+    worship: { color: '#65A30D', icon: 'M12 3c-3 2-5 4-5 7h10c0-3-2-5-5-7zM6 10v10h12V10M10 20v-4a2 2 0 0 1 4 0v4' },
+    edu: { color: '#CA8A04', icon: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5' },
+    hotel: { color: '#6366F1', icon: 'M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5M7 10a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z' },
+    park: { color: '#16A34A', icon: 'M12 3l5 7h-3l4 6H6l4-6H7zM12 16v5' },
+    other: { color: '#64748B', icon: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' }
+  };
+  const placeIcon = (g) => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + PLACE_GROUPS[g].icon + '"/></svg>';
+  function placeGroup(tags) {
+    const a = tags.amenity, tt = tags.tourism, l = tags.leisure;
+    if (/^(restaurant|cafe|fast_food|ice_cream|food_court|bar)$/.test(a)) return 'food';
+    if (tags.shop) return 'shop';
+    if (/^(pharmacy|hospital|clinic|doctors|dentist)$/.test(a)) return 'health';
+    if (/^(bank|atm|bureau_de_change)$/.test(a)) return 'money';
+    if (a === 'fuel') return 'fuel';
+    if (a === 'place_of_worship') return 'worship';
+    if (/^(school|university|college|kindergarten)$/.test(a)) return 'edu';
+    if (/^(hotel|guest_house|hostel)$/.test(tt)) return 'hotel';
+    if (/^(park|garden)$/.test(l)) return 'park';
+    return 'other';
+  }
+  // the name in the app's language when OpenStreetMap has it
+  function placeName(tags) {
+    const keys = state.lang === 'ckb' ? ['name:ckb', 'name:ku'] : (state.lang === 'ar' ? ['name:ar'] : ['name:en']);
+    for (const k of keys) if (tags[k]) return tags[k];
+    return tags.name || '';
+  }
+  // The places servers allow ~2 requests at a time per phone, so requests wait in line (one at a time),
+  // and a failed one is tried again once after 3 s.
+  let ovpLine = Promise.resolve();
+  function overpass(query) {
+    const job = ovpLine.then(async () => (await overpassOnce(query)) || (await new Promise((r) => setTimeout(r, 3000)), await overpassOnce(query)));
+    ovpLine = job.catch(() => null);
+    return job;
+  }
+  async function overpassOnce(query) {
+    for (const url of OVERPASS) {
+      // give each server 12 s, then try the next one
+      const ctrl = window.AbortController ? new AbortController() : null;
+      const timer = ctrl && setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const r = await fetch(url + '?data=' + encodeURIComponent(query), ctrl ? { signal: ctrl.signal } : {});
+        if (r.ok) return (await r.json()).elements || [];
+      } catch (e) { /* try the next server */ } finally { clearTimeout(timer); }
+    }
+    return null;
+  }
+  const PLACE_FILTER = '["name"]["amenity"~"^(restaurant|cafe|fast_food|ice_cream|food_court|pharmacy|hospital|clinic|doctors|dentist|bank|atm|bureau_de_change|fuel|place_of_worship|school|university|college|kindergarten|police|post_office|cinema|marketplace)$"]';
+  function placesQuery(area, limit) {
+    return '[out:json][timeout:20];(' +
+      'nwr' + PLACE_FILTER + area + ';' +
+      'nwr["name"]["shop"]' + area + ';' +
+      'nwr["name"]["tourism"~"^(hotel|guest_house|hostel|attraction|museum|viewpoint)$"]' + area + ';' +
+      'nwr["name"]["leisure"~"^(park|garden|stadium|sports_centre|fitness_centre)$"]' + area + ';' +
+      ');out center ' + limit + ';';
+  }
+  const places = { all: new Map(), cells: new Set(), loading: false, on: localStorage.getItem('trackly-places') !== '0', filter: new Set(Object.keys(PLACE_GROUPS).filter((g) => g !== 'other')) };
+  function toPlace(el) {
+    const lat = el.lat ?? (el.center && el.center.lat), lng = el.lon ?? (el.center && el.center.lon);
+    if (lat == null || !el.tags) return null;
+    return { id: el.type + el.id, lat, lng, tags: el.tags, group: placeGroup(el.tags) };
+  }
+
+  // Fast path: the vector map (OpenFreeMap) already carries shops, cafés, pharmacies… for the tiles on screen.
+  // Reading them from there is instant and needs no extra server. Satellite view falls back to Overpass.
+  function vectorGroup(cls, sub) {
+    const s = sub || '', c = cls || '';
+    if (/^(restaurant|fast_food|cafe|bar|ice_cream|food_court|pub|beer)$/.test(c) || /^(restaurant|fast_food|cafe|ice_cream|food_court)$/.test(s)) return 'food';
+    if (/^(pharmacy|hospital|clinic|doctors|dentist)$/.test(c) || /^(pharmacy|hospital|clinic|doctors|dentist)$/.test(s)) return 'health';
+    if (/^(bank|atm|bureau_de_change)$/.test(s) || c === 'bank') return 'money';
+    if (c === 'fuel' || s === 'fuel') return 'fuel';
+    if (c === 'place_of_worship' || s === 'place_of_worship' || /^(mosque|church)$/.test(s)) return 'worship';
+    if (/^(school|college|university|kindergarten)$/.test(c) || /^(school|college|university|kindergarten)$/.test(s)) return 'edu';
+    if (c === 'lodging' || /^(hotel|guest_house|hostel)$/.test(s)) return 'hotel';
+    if (/^(park|garden)$/.test(c) || /^(park|garden)$/.test(s)) return 'park';
+    if (c === 'shop' || /_store$|_shop$/.test(c) || /^(grocery|bakery|mall|supermarket|clothes|convenience|electronics|mobile_phone|jewelry|shoes|butcher|greengrocer|department_store)$/.test(c + '|' + s) || c === 'grocery') return 'shop';
+    return 'other';
+  }
+  function harvestVectorPlaces() {
+    const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
+    if (!gl || !gl.isStyleLoaded || !gl.getSource('openmaptiles')) return 0;
+    let n = 0;
+    let feats = [];
+    try { feats = gl.querySourceFeatures('openmaptiles', { sourceLayer: 'poi' }); } catch (e) { return 0; }
+    for (const f of feats) {
+      const p = f.properties || {};
+      if (!p.name || !f.geometry || f.geometry.type !== 'Point') continue;
+      const [lng, lat] = f.geometry.coordinates;
+      const id = 'v' + (f.id != null ? f.id : p.name + lat.toFixed(5) + lng.toFixed(5));
+      if (places.all.has(id)) continue;
+      const tags = { name: p.name, 'name:en': p.name_en || p['name:en'], 'name:ar': p['name:ar'], 'name:ckb': p['name:ckb'] || p['name:ku'], kind: p.subclass || p.class };
+      places.all.set(id, { id, lat, lng, tags, group: vectorGroup(p.class, p.subclass) });
+      n++;
+    }
+    return n;
+  }
+
+  async function loadPlaces() {
+    if (!places.on || !map.m || state.tab === 'history' || state.zoneEdit) return;
+    if (map.m.getZoom() < 15) { renderPlaces(); return; }
+    const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
+    if (gl) {
+      // vector map: read places when its tiles have loaded (and again after each move)
+      if (!gl._tracklyHooked) { gl._tracklyHooked = true; gl.on('idle', () => { if (harvestVectorPlaces()) { renderPlaces(); if (state.recent[0]) updateNear(state.recent[0]); } }); }
+      harvestVectorPlaces();
+      renderPlaces();
+      return;
+    }
+    // which ~1 km squares are on screen and not loaded yet
+    const b = map.m.getBounds().pad(0.2), C = 0.01;
+    const need = [];
+    for (let la = Math.floor(b.getSouth() / C); la <= Math.floor(b.getNorth() / C); la++)
+      for (let ln = Math.floor(b.getWest() / C); ln <= Math.floor(b.getEast() / C); ln++)
+        if (!places.cells.has(la + ':' + ln)) need.push([la, ln]);
+    if (!need.length || places.loading) { renderPlaces(); return; }
+    if (need.length > 16) { renderPlaces(); return; } // zoomed out too far for one request
+    places.loading = true;
+    $('#btn-places').classList.add('loading');
+    const s = Math.min(...need.map((c) => c[0])) * C, w = Math.min(...need.map((c) => c[1])) * C;
+    const n = (Math.max(...need.map((c) => c[0])) + 1) * C, e = (Math.max(...need.map((c) => c[1])) + 1) * C;
+    const els = await overpass(placesQuery('(' + [s, w, n, e].map((x) => x.toFixed(4)).join(',') + ')', 1500));
+    places.loading = false;
+    $('#btn-places').classList.remove('loading');
+    if (els) {
+      need.forEach((c) => places.cells.add(c[0] + ':' + c[1]));
+      els.forEach((el) => { const p = toPlace(el); if (p) places.all.set(p.id, p); });
+    }
+    renderPlaces();
+    if (state.recent[0]) updateNear(state.recent[0]);
+    if (els) loadPlaces(); // the map may have moved while loading
+  }
+
+  function renderPlaces() {
+    if (!map.places) map.places = L.layerGroup().addTo(map.m);
+    map.places.clearLayers();
+    $('#btn-places').classList.toggle('active', places.on);
+    $('#places-bar').hidden = !places.on || state.tab !== 'map' || !!state.zoneEdit;
+    if (!places.on || state.tab === 'history' || state.zoneEdit) return;
+    const zoom = map.m.getZoom();
+    $('#places-hint').hidden = zoom >= 16 || state.tab !== 'map';
+    if (zoom < 16) return;
+    map.m.getContainer().classList.toggle('show-place-names', zoom >= 17);
+    const b = map.m.getBounds().pad(0.1);
+    const max = zoom >= 18 ? 300 : (zoom >= 17 ? 140 : 60);
+    let shown = 0;
+    for (const p of places.all.values()) {
+      if (shown >= max) break;
+      if (!places.filter.has(p.group) || !b.contains([p.lat, p.lng])) continue;
+      const g = PLACE_GROUPS[p.group];
+      const m = L.marker([p.lat, p.lng], {
+        keyboard: false, riseOnHover: true,
+        icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+          html: '<div class="place" style="--c:' + g.color + '"><span class="place-dot">' + placeIcon(p.group) + '</span><span class="place-name"></span></div>' })
+      });
+      m.on('add', function () { this.getElement().querySelector('.place-name').textContent = placeName(p.tags); });
+      m.on('click', () => showPlace(p));
+      m.addTo(map.places);
+      shown++;
+    }
+  }
+
+  function renderPlacesBar() {
+    const bar = $('#places-bar');
+    bar.innerHTML = '';
+    Object.keys(PLACE_GROUPS).filter((g) => g !== 'other').forEach((g) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'pchip' + (places.filter.has(g) ? ' on' : '');
+      b.style.setProperty('--c', PLACE_GROUPS[g].color);
+      b.innerHTML = placeIcon(g) + '<span></span>';
+      b.querySelector('span').textContent = t('pg_' + g);
+      b.addEventListener('click', () => {
+        // first tap on a full filter shows only that group; then taps add / remove groups
+        const all = places.filter.size >= Object.keys(PLACE_GROUPS).length - 1;
+        if (all) { places.filter = new Set([g]); }
+        else if (places.filter.has(g)) { places.filter.delete(g); if (!places.filter.size) places.filter = new Set(Object.keys(PLACE_GROUPS).filter((x) => x !== 'other')); }
+        else places.filter.add(g);
+        renderPlacesBar(); renderPlaces();
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  function togglePlaces() {
+    places.on = !places.on;
+    localStorage.setItem('trackly-places', places.on ? '1' : '0');
+    if (places.on && map.m.getZoom() < 16) toast(t('places_zoom'));
+    renderPlaces(); loadPlaces();
+  }
+
+  // Tap a place: name, type, address, hours, phone + Directions / Safe zone here
+  function showPlace(p) {
+    const box = document.createElement('div');
+    box.className = 'bi';
+    const g = PLACE_GROUPS[p.group];
+    box.innerHTML = '<div class="pl-head"><span class="place-dot big" style="--c:' + g.color + '">' + placeIcon(p.group) + '</span>' +
+      '<div><strong class="bi-title"></strong><span class="pl-type"></span></div></div><dl class="bi-grid"></dl>' +
+      '<div class="bi-actions"><button type="button" class="btn btn-secondary" data-pa="zone"></button><button type="button" class="btn btn-primary" data-pa="go"></button></div>';
+    box.querySelector('.bi-title').textContent = placeName(p.tags);
+    const tagType = p.tags.shop || p.tags.amenity || p.tags.tourism || p.tags.leisure || p.tags.kind || '';
+    box.querySelector('.pl-type').textContent = t('pg_' + p.group) + (tagType && p.group !== 'other' ? '' : (tagType ? ' · ' + tagType.replace(/_/g, ' ') : ''));
+    const dl = box.querySelector('dl');
+    const row = (k, v, href) => {
+      if (!v) return;
+      const dt = document.createElement('dt'); dt.textContent = t(k);
+      const dd = document.createElement('dd');
+      if (href) { const a = document.createElement('a'); a.href = href; a.textContent = v; a.dir = 'ltr'; dd.appendChild(a); } else dd.textContent = v;
+      dl.append(dt, dd);
+    };
+    const addr = [p.tags['addr:street'], p.tags['addr:housenumber']].filter(Boolean).join(' ');
+    row('address', addr);
+    row('open_hours', p.tags.opening_hours);
+    const phone = p.tags.phone || p.tags['contact:phone'];
+    row('phone', phone, phone ? 'tel:' + phone.replace(/\s/g, '') : null);
+    const loc = state.recent[0];
+    if (loc) row('from_bag', fmtDistance(distanceM(loc, p)));
+    box.querySelector('[data-pa="zone"]').textContent = t('zone_here');
+    box.querySelector('[data-pa="go"]').textContent = t('directions');
+    box.querySelector('[data-pa="go"]').addEventListener('click', () => window.open('https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng, '_blank', 'noopener'));
+    box.querySelector('[data-pa="zone"]').addEventListener('click', () => {
+      map.m.closePopup();
+      switchTab('zones');
+      startZoneEdit();
+      $('#zone-name').value = placeName(p.tags).slice(0, 40);
+      map.m.setView([p.lat, p.lng], 17, { animate: false });
+      map.m.panBy([0, -(map.pinOffset || 0)], { animate: false });
+      syncEditCircle();
+    });
+    L.popup({ className: 'bag-popup', maxWidth: 300, offset: [0, -8], autoPanPaddingTopLeft: [16, 130] }).setLatLng([p.lat, p.lng]).setContent(box).openOn(map.m);
+  }
+
+  // "Near Family Mall · 40 m" on the bag card: the closest named place around the bag
+  const nearCache = {};
+  async function updateNear(loc) {
+    const el = $('#bag-near');
+    const key = loc.lat.toFixed(3) + ',' + loc.lng.toFixed(3);
+    const show = (p) => {
+      if (!p) { el.hidden = true; return; }
+      el.hidden = false;
+      el.innerHTML = '<span class="place-dot tiny" style="--c:' + PLACE_GROUPS[p.group].color + '">' + placeIcon(p.group) + '</span><span></span>';
+      el.querySelector('span:last-child').textContent = t('near_place', { p: placeName(p.tags) }) + ' · ' + fmtDistance(distanceM(loc, p));
+    };
+    const pick = (list) => list.filter((p) => p.group !== 'other' || p.tags.tourism)
+      .map((p) => ({ p, d: distanceM(loc, p) })).filter((x) => x.d <= 250).sort((a, b) => a.d - b.d)[0];
+    // places already on the map are enough most of the time
+    const local = pick([...places.all.values()]);
+    if (local) { show(local.p); return; }
+    if (key in nearCache) { show(nearCache[key]); return; }
+    // the vector map / places layer will bring them (no extra server request)
+    if (places.on && (map.m.getZoom() >= 15 || (map.tiles && map.tiles.getMaplibreMap))) { el.hidden = true; return; }
+    nearCache[key] = null;
+    const els = await overpass(placesQuery('(around:250,' + loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5) + ')', 60));
+    const found = pick((els || []).map(toPlace).filter(Boolean));
+    nearCache[key] = found ? found.p : null;
+    if (state.recent[0] === loc) show(nearCache[key]);
+  }
+
+  // =====================================================================
+  // SEARCH the map: any street, mall, area or shop (OpenStreetMap)
+  // =====================================================================
+  let mapSearchTimer = null, mapSearchSeq = 0;
+  function openSearch() {
+    $('#search-panel').hidden = false;
+    $('#map-search').value = '';
+    $('#map-search-results').innerHTML = '';
+    setTimeout(() => $('#map-search').focus(), 50);
+  }
+  function closeSearch() { $('#search-panel').hidden = true; $('#map-search').blur(); }
+  function onMapSearch(e) {
+    clearTimeout(mapSearchTimer);
+    const q = e.target.value.trim();
+    const list = $('#map-search-results');
+    if (q.length < 2) { list.innerHTML = ''; return; }
+    mapSearchTimer = setTimeout(async () => {
+      const seq = ++mapSearchSeq;
+      // 1) places already loaded on the map (instant), 2) OpenStreetMap search
+      const low = q.toLowerCase();
+      const local = [...places.all.values()].filter((p) => Object.keys(p.tags).some((k) => k.startsWith('name') && String(p.tags[k]).toLowerCase().includes(low))).slice(0, 5)
+        .map((p) => ({ name: placeName(p.tags), sub: t('pg_' + p.group), lat: p.lat, lng: p.lng, group: p.group }));
+      const c = map.m.getCenter();
+      const lang = state.lang === 'ckb' ? 'ckb,ku,ar,en' : state.lang + ',en';
+      let rows = [];
+      try {
+        const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=8&countrycodes=iq&accept-language=' + lang +
+          '&viewbox=' + [c.lng - 0.5, c.lat + 0.4, c.lng + 0.5, c.lat - 0.4].join(',') + '&q=' + encodeURIComponent(q));
+        if (r.ok) rows = await r.json();
+      } catch (err) { /* offline */ }
+      if (seq !== mapSearchSeq) return;
+      const all = local.concat(rows.map((row) => {
+        const parts = String(row.display_name || '').split(',');
+        return { name: parts[0], sub: parts.slice(1, 3).join(',').trim(), lat: +row.lat, lng: +row.lon, group: null };
+      }));
+      list.innerHTML = '';
+      if (!all.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_results'); list.appendChild(li); return; }
+      all.forEach((r) => {
+        const li = document.createElement('li');
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.innerHTML = '<span class="place-dot" style="--c:' + (r.group ? PLACE_GROUPS[r.group].color : '#64748B') + '">' + placeIcon(r.group || 'other') + '</span><span class="sr-text"><strong></strong><span></span></span>';
+        b.querySelector('strong').textContent = r.name;
+        b.querySelector('.sr-text span').textContent = r.sub + (state.recent[0] ? ' · ' + fmtDistance(distanceM(state.recent[0], r)) : '');
+        b.addEventListener('click', () => {
+          closeSearch();
+          state.followBag = false; updateCenterBtn();
+          map.m.setView([r.lat, r.lng], 17);
+          if (map.searchPin) map.m.removeLayer(map.searchPin);
+          map.searchPin = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: '', iconSize: [34, 42], iconAnchor: [17, 40], html: '<div class="search-pin"></div>' }) }).addTo(map.m);
+          showPlace({ id: 'search', lat: r.lat, lng: r.lng, group: r.group || 'other', tags: { name: r.name } });
+        });
+        li.appendChild(b);
+        list.appendChild(li);
+      });
+    }, 350);
+  }
+
+  // =====================================================================
+  // FIND MODE — a big arrow that points to the bag (phone compass + GPS)
+  // =====================================================================
+  const find = { on: false, heading: null, lastDist: null, handler: null };
+  function openFind() {
+    if (!state.recent[0]) { toast(t('no_location')); return; }
+    find.on = true; find.lastDist = null;
+    $('#find-view').hidden = false;
+    locateMe(false);                      // live position of the phone
+    startCompass(false);
+    renderFind();
+  }
+  function closeFind() {
+    find.on = false;
+    $('#find-view').hidden = true;
+    if (find.handler) { window.removeEventListener('deviceorientationabsolute', find.handler); window.removeEventListener('deviceorientation', find.handler); find.handler = null; }
+  }
+  // iPhone needs a tap before it shares the compass; Android just works
+  async function startCompass(fromTap) {
+    const D = window.DeviceOrientationEvent;
+    if (!D) { renderFind(); return; }
+    if (typeof D.requestPermission === 'function') {
+      if (!fromTap) { $('#find-compass').hidden = false; return; }
+      try { if ((await D.requestPermission()) !== 'granted') return; } catch (e) { return; }
+    }
+    $('#find-compass').hidden = true;
+    if (find.handler) return;
+    find.handler = (e) => {
+      let h = null;
+      if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;          // iPhone
+      else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;     // Android
+      if (h !== null) { find.heading = h; renderFind(); }
+    };
+    window.addEventListener('ontouchstart' in window && 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation', find.handler);
+  }
+  function renderFind() {
+    if (!find.on) return;
+    const loc = state.recent[0];
+    const me = state.me;
+    $('#find-name').textContent = state.tracker ? (state.tracker.name || state.tracker.device_code) : '';
+    if (!me || !loc) { $('#find-dist').textContent = '…'; $('#find-dir').textContent = t('waiting'); return; }
+    const d = distanceM(me, loc), br = bearing(me, loc);
+    $('#find-dist').textContent = d < 8 ? t('find_here') : fmtDistance(d);
+    $('#find-dist').classList.toggle('text', d < 8);
+    $('#find-dir').textContent = d < 8 ? '' : t('dir_' + compass(br)) + (find.heading === null ? ' · ' + t('find_no_compass') : '');
+    // arrow: relative to where the phone points (compass), or to north when there's no compass
+    const rot = find.heading === null ? br : br - find.heading;
+    $('#find-arrow').style.transform = 'rotate(' + Math.round(rot) + 'deg)';
+    $('#find-ring').classList.toggle('near', d < 30);
+    if (find.lastDist !== null && Math.abs(d - find.lastDist) > 3) {
+      $('#find-trend').textContent = d < find.lastDist ? t('find_closer') : t('find_farther');
+      $('#find-trend').className = 'find-trend ' + (d < find.lastDist ? 'good' : 'bad');
+      find.lastDist = d;
+    } else if (find.lastDist === null) find.lastDist = d;
+  }
+
+  // =====================================================================
+  // ALERTS — safe zone leave / arrive and low battery, as they happen
+  // (in the real app these also come as push notifications from the server)
+  // =====================================================================
+  function alertList() { try { return JSON.parse(localStorage.getItem('trackly-alerts')) || []; } catch (e) { return []; } }
+  function addAlert(kind, text) {
+    const list = alertList();
+    list.unshift({ kind, text, at: new Date().toISOString() });
+    localStorage.setItem('trackly-alerts', JSON.stringify(list.slice(0, 30)));
+    renderAlerts();
+    toast(text);
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    // a phone notification too, if the user allowed them
+    try {
+      if (window.Notification && Notification.permission === 'granted' && navigator.serviceWorker) {
+        navigator.serviceWorker.ready.then((reg) => reg.showNotification('Trackly', { body: text, icon: 'icons/icon-192.png', badge: 'icons/icon-192.png', tag: 'trackly-' + kind }));
+      }
+    } catch (e) { /* not supported */ }
+  }
+  function checkAlerts(prev, next) {
+    if (!prev || !next || !state.tracker) return;
+    const bag = state.tracker.name || state.tracker.device_code;
+    state.zones.filter((z) => z.enabled).forEach((z) => {
+      const was = distanceM(prev, z) <= z.radius_m, now = distanceM(next, z) <= z.radius_m;
+      if (was && !now && (z.notify_on === 'leave' || z.notify_on === 'both')) addAlert('zone', t('alert_left', { b: bag, z: z.name }));
+      if (!was && now && (z.notify_on === 'arrive' || z.notify_on === 'both')) addAlert('zone', t('alert_arrived', { b: bag, z: z.name }));
+    });
+    const lim = CFG.lowBatteryPercent;
+    if (typeof prev.battery === 'number' && typeof next.battery === 'number' && prev.battery > lim && next.battery <= lim) addAlert('battery', t('alert_low', { b: bag, n: next.battery }));
+    if (typeof prev.battery === 'number' && typeof next.battery === 'number' && prev.battery > 5 && next.battery <= 5) addAlert('battery', t('alert_critical', { b: bag }));
+  }
+  // real database: alerts are made by the server (saved even when the app is closed)
+  const ALERT_TEXT = { zone_left: 'alert_left', zone_arrived: 'alert_arrived', battery_low: 'alert_low', battery_critical: 'alert_critical' };
+  async function serverAlerts() {
+    const { data, error } = await sb.from('alerts').select('tracker_id, kind, zone_name, battery, created_at').order('created_at', { ascending: false }).limit(20);
+    if (error || !data) return null;
+    return data.map((a) => {
+      const tr = state.trackers.find((x) => x.id === a.tracker_id);
+      const b = tr ? (tr.name || tr.device_code) : '';
+      return { kind: a.kind.startsWith('battery') ? 'battery' : 'zone', at: a.created_at, text: t(ALERT_TEXT[a.kind], { b, z: a.zone_name || '', n: a.battery }) };
+    });
+  }
+  async function renderAlerts() {
+    const ul = $('#alert-list');
+    if (!ul) return;
+    const list = (!CFG.fakeBackend && (await serverAlerts())) || alertList();
+    ul.innerHTML = '';
+    if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_alerts'); ul.appendChild(li); return; }
+    list.slice(0, 8).forEach((a) => {
+      const li = document.createElement('li');
+      li.className = 'alert-item ' + a.kind;
+      const strong = document.createElement('strong'); strong.textContent = a.text;
+      const span = document.createElement('span'); span.textContent = clockTime(a.at) + ' · ' + relTime(ageSeconds({ created_at: a.at }));
+      li.append(strong, span);
+      ul.appendChild(li);
+    });
+  }
+
+  // =====================================================================
+  // BOTTOM CARD — swipe down (or tap the handle) to see more map
+  // =====================================================================
+  function setupSheetDrag() {
+    const sheet = $('#sheet'), handle = $('#sheet-handle');
+    let y0 = null;
+    const toggle = (collapse) => { sheet.classList.toggle('collapsed', collapse); handle.setAttribute('aria-expanded', String(!collapse)); };
+    handle.addEventListener('click', () => toggle(!sheet.classList.contains('collapsed')));
+    handle.addEventListener('pointerdown', (e) => { y0 = e.clientY; });
+    window.addEventListener('pointerup', (e) => {
+      if (y0 === null) return;
+      const dy = e.clientY - y0; y0 = null;
+      if (dy > 30) toggle(true); else if (dy < -30) toggle(false);
+    });
+  }
+
+  // =====================================================================
+  // BEEP — ask the tracker to play its sound (the ESP32 checks for this)
+  // =====================================================================
+  async function requestBuzz() {
+    if (!state.tracker) return;
+    const { error } = await sb.rpc('request_buzz', { p_tracker: state.tracker.id });
+    if (error) { toast(errorText(error)); return; }
+    if (navigator.vibrate) navigator.vibrate(80);
+    toast(state.tracker.mode === 'lost' ? t('buzz_sent_lost') : t('buzz_sent'));
+  }
+
+  // =====================================================================
+  // SHARE LIVE — a link family can open (no account) that ends by itself
+  // =====================================================================
+  async function shareLive(hours) {
+    if (!state.tracker) return;
+    const { data, error } = await sb.rpc('create_share_link', { p_tracker: state.tracker.id, p_hours: hours || 4 });
+    if (error || !data) { shareLocation(); return; } // fall back to a one-time Google Maps point
+    const url = new URL('share.html?t=' + encodeURIComponent(data), location.href).href;
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Trackly', text: t('share_live_text', { h: hours || 4 }), url }); return; }
+      await navigator.clipboard.writeText(url);
+      toast(t('toast_link_copied'));
+    } catch (e) { /* closed the share sheet */ }
+  }
+
+  // =====================================================================
+  // REPORT — one page with everything police or friends need, ready to print / save as PDF
+  // =====================================================================
+  async function openReport() {
+    if (!state.tracker || !state.recent[0]) { toast(t('no_location')); return; }
+    const v = $('#report-view');
+    v.hidden = false;
+    const loc = state.recent[0], tr = state.tracker;
+    $('#rp-name').textContent = tr.name || tr.device_code;
+    $('#rp-code').textContent = tr.device_code;
+    $('#rp-owner').textContent = state.user ? state.user.email : '';
+    $('#rp-made').textContent = new Date().toLocaleString(state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn'));
+    $('#rp-mode').textContent = tr.mode === 'lost' ? t('mode_lost') : t('mode_normal');
+    $('#rp-last').textContent = clockTime(loc.created_at) + ' · ' + relTime(ageSeconds(loc));
+    $('#rp-coords').textContent = loc.lat.toFixed(6) + ', ' + loc.lng.toFixed(6);
+    $('#rp-battery').textContent = typeof loc.battery === 'number' ? loc.battery + '%' : '—';
+    $('#rp-address').textContent = $('#bag-area').textContent + ($('#bag-near').hidden ? '' : ' · ' + $('#bag-near').textContent);
+    $('#rp-maps').href = 'https://www.google.com/maps/search/?api=1&query=' + loc.lat.toFixed(6) + ',' + loc.lng.toFixed(6);
+    $('#rp-maps').textContent = $('#rp-maps').href;
+    // last 2 hours of points
+    const since = Date.now() - 2 * 3600e3;
+    const pts = state.recent.filter((r) => new Date(r.created_at).getTime() >= since).slice(0, 40);
+    const tb = $('#rp-points');
+    tb.innerHTML = '';
+    pts.forEach((p) => {
+      const tr2 = document.createElement('tr');
+      [clockTime(p.created_at), p.lat.toFixed(5) + ', ' + p.lng.toFixed(5), typeof p.battery === 'number' ? p.battery + '%' : '—'].forEach((x) => {
+        const td = document.createElement('td'); td.textContent = x; tr2.appendChild(td);
+      });
+      tb.appendChild(tr2);
+    });
+    // small map with the route
+    setTimeout(() => {
+      if (!map.report) {
+        map.report = L.map('rp-map', { zoomControl: false, attributionControl: true, dragging: true });
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap', crossOrigin: true }).addTo(map.report);
+      }
+      map.report.invalidateSize();
+      if (map.reportLayer) map.report.removeLayer(map.reportLayer);
+      const g = L.layerGroup();
+      const line = pts.map((p) => [p.lat, p.lng]);
+      if (line.length > 1) L.polyline(line, { color: '#D93A3F', weight: 4 }).addTo(g);
+      L.circleMarker([loc.lat, loc.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#D93A3F', fillOpacity: 1 }).addTo(g);
+      map.reportLayer = g.addTo(map.report);
+      if (line.length > 1) map.report.fitBounds(L.latLngBounds(line), { padding: [24, 24], maxZoom: 17 });
+      else map.report.setView([loc.lat, loc.lng], 17);
+    }, 60);
+  }
+  function closeReport() { $('#report-view').hidden = true; }
+  async function shareReport() {
+    const loc = state.recent[0];
+    const text = t('report_title') + ': ' + $('#rp-name').textContent + ' (' + $('#rp-code').textContent + ')\n' +
+      t('last_seen') + ': ' + $('#rp-last').textContent + '\n' + $('#rp-address').textContent + '\n' + $('#rp-maps').href;
+    try {
+      if (navigator.share) await navigator.share({ title: t('report_title'), text });
+      else { await navigator.clipboard.writeText(text); toast(t('copied')); }
+    } catch (e) { /* closed */ }
+    void loc;
+  }
+
+  // =====================================================================
+  // BATTERY LIFE — how long it lasts at the current use (from the last day)
+  // =====================================================================
+  const batt = { rate: null, for: null, at: 0 };
+  async function estimateBattery() {
+    if (!state.tracker || (batt.for === state.tracker.id && Date.now() - batt.at < 30 * 60e3)) return;
+    batt.for = state.tracker.id; batt.at = Date.now();
+    const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const { data } = await sb.from('locations').select('battery, created_at').eq('tracker_id', state.tracker.id)
+      .gte('created_at', since).order('created_at', { ascending: true }).limit(3000);
+    const pts = (data || []).filter((p) => typeof p.battery === 'number');
+    batt.rate = null;
+    if (pts.length >= 2) {
+      const a = pts[0], b = pts[pts.length - 1];
+      const hours = (new Date(b.created_at) - new Date(a.created_at)) / 3600e3;
+      const drop = a.battery - b.battery;
+      if (hours >= 1 && drop >= 2) batt.rate = drop / hours; // % per hour
+    }
+    renderMapPanel();
+  }
+  function batteryLeftText(battery, lost) {
+    if (typeof battery !== 'number') return '';
+    let hours;
+    if (lost) hours = (battery / 100) * CFG.lostBatteryHoursAtFull;
+    else if (batt.rate) hours = battery / batt.rate;
+    else return '';
+    return hours >= 48 ? t('days_left', { n: Math.round(hours / 24) }) : t('hours_left', { n: Math.max(1, Math.round(hours)) });
+  }
+
+  // =====================================================================
+  // STOPS — "Family Mall · 2 h 10 min" in History (places it stayed 10 min+)
+  // =====================================================================
+  function findStops(pts) {
+    const stops = [];
+    let i = 0;
+    while (i < pts.length) {
+      let j = i;
+      while (j + 1 < pts.length && distanceM(pts[i], pts[j + 1]) <= 120) j++;
+      const mins = (new Date(pts[j].created_at) - new Date(pts[i].created_at)) / 60000;
+      if (mins >= 10) {
+        const group = pts.slice(i, j + 1);
+        stops.push({ lat: group.reduce((s, p) => s + p.lat, 0) / group.length, lng: group.reduce((s, p) => s + p.lng, 0) / group.length,
+          from: pts[i].created_at, to: pts[j].created_at, mins });
+        i = j + 1;
+      } else i++;
+    }
+    return stops;
+  }
+  function fmtDuration(mins) {
+    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    if (h && m) return t('dur_hm', { h, m });
+    if (h) return t('dur_h', { h });
+    return t('dur_m', { m: Math.max(1, m) });
+  }
+  // name for a stop: a safe zone, a place we already know, or the street (OpenStreetMap)
+  const stopNames = {};
+  async function stopName(s) {
+    const z = zoneAt(s);
+    if (z) return z.name;
+    const near = [...places.all.values()].map((p) => ({ p, d: distanceM(s, p) })).filter((x) => x.d < 80).sort((a, b) => a.d - b.d)[0];
+    if (near) return placeName(near.p.tags);
+    const key = state.lang + s.lat.toFixed(4) + s.lng.toFixed(4);
+    if (stopNames[key]) return stopNames[key];
+    try {
+      const lang = state.lang === 'ckb' ? 'ckb,ku,ar' : state.lang;
+      const r = await fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&lat=' + s.lat + '&lon=' + s.lng + '&accept-language=' + lang);
+      if (r.ok) {
+        const d = await r.json(), a = d.address || {};
+        stopNames[key] = d.name || a.amenity || a.shop || a.road || a.neighbourhood || a.suburb || '';
+      }
+    } catch (e) { /* offline */ }
+    return stopNames[key] || t('stop');
+  }
+
+  // =====================================================================
+  // YOUR BAGS — name + colour for each bag (Account tab)
+  // =====================================================================
+  const BAG_COLORS = ['#E8B86D', '#3DDBB4', '#E8A0A8', '#5B8CFF', '#B38CFF', '#F97316'];
+  function bagColor(tr) { return (tr && tr.color) || BAG_COLORS[Math.max(0, state.trackers.indexOf(tr)) % BAG_COLORS.length]; }
+  function renderBags() {
+    const ul = $('#bag-list');
+    if (!ul) return;
+    ul.innerHTML = '';
+    state.trackers.forEach((tr) => {
+      const li = document.createElement('li');
+      li.className = 'bag-item';
+      const dot = document.createElement('span'); dot.className = 'bag-dot'; dot.style.background = bagColor(tr);
+      const name = document.createElement('input'); name.value = tr.name || ''; name.placeholder = tr.device_code; name.maxLength = 40;
+      name.setAttribute('aria-label', t('give_name'));
+      name.addEventListener('change', () => saveBag(tr, { name: name.value.trim() || tr.device_code }));
+      const colors = document.createElement('div'); colors.className = 'bag-colors';
+      BAG_COLORS.forEach((c) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.style.background = c; b.setAttribute('aria-label', c);
+        if (bagColor(tr) === c) b.className = 'on';
+        b.addEventListener('click', () => saveBag(tr, { color: c }));
+        colors.appendChild(b);
+      });
+      const code = document.createElement('span'); code.className = 'bag-code'; code.textContent = tr.device_code;
+      li.append(dot, name, code, colors);
+      ul.appendChild(li);
+    });
+  }
+  async function saveBag(tr, values) {
+    const { error } = await sb.rpc('set_tracker_info', { p_tracker: tr.id, p_name: values.name ?? tr.name, p_color: values.color ?? tr.color ?? null });
+    if (error) { toast(errorText(error)); return; }
+    Object.assign(tr, values);
+    const opt = [...$('#tracker-select').options].find((o) => o.value === tr.id);
+    if (opt) opt.textContent = tr.name || tr.device_code;
+    renderBags(); renderMapPanel();
+    toast(t('saved'));
+  }
+
+  // =====================================================================
+  // COLOUR THEMES (Account tab) — Gold is the default
+  // =====================================================================
+  const THEMES = ['gold', 'mint', 'rose', 'ocean'];
+  function applyTheme(name) {
+    const th = THEMES.includes(name) ? name : 'gold';
+    document.documentElement.dataset.theme = th;
+    localStorage.setItem('trackly-theme', th);
+    $$('#theme-list [data-theme-pick]').forEach((b) => b.classList.toggle('on', b.dataset.themePick === th));
+    const meta = document.querySelectorAll('meta[name="theme-color"]');
+    meta.forEach((m) => { m.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(); });
+    if (map.m) { renderMapPanel(); renderZones(); }
+  }
+
+  // =====================================================================
+  // DATABASE SWITCH — test mode (pretend data) or the real Supabase
+  // =====================================================================
+  function setBackend(real) {
+    localStorage.setItem('trackly-backend', real ? 'real' : 'test');
+    location.reload();
+  }
+
   // ---------- events ----------
   function bindEvents() {
     document.addEventListener('click', async (e) => {
@@ -1234,11 +1939,24 @@
       else if (a === 'allow-notif') allowNotifications();
       else if (a === 'setup-done') finishSetup();
       else if (a === 'hide-banner') { state.bannerHiddenFor = state.tracker && state.tracker.id; $('#battery-banner').hidden = true; }
-      else if (a === 'find-nearby') toast(t('toast_nearby_soon'));
+      else if (a === 'find-nearby') openFind();
+      else if (a === 'close-find') closeFind();
+      else if (a === 'find-compass') startCompass(true);
+      else if (a === 'find-sound') requestBuzz();
+      else if (a === 'toggle-places') togglePlaces();
+      else if (a === 'open-search') openSearch();
+      else if (a === 'close-search') closeSearch();
       else if (a === 'confirm-lost') { closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
       else if (a === 'cancel-lost') closeConfirm();
       else if (a === 'found') { if (await setMode('normal')) toast(t('toast_found')); }
-      else if (a === 'share') shareLocation();
+      else if (a === 'share') shareLive(4);
+      else if (a === 'share-live') shareLive(Number(el.dataset.hours) || 4);
+      else if (a === 'report') openReport();
+      else if (a === 'close-report') closeReport();
+      else if (a === 'print-report') window.print();
+      else if (a === 'share-report') shareReport();
+      else if (a === 'theme') applyTheme(el.dataset.themePick);
+      else if (a === 'backend') setBackend(!CFG.fakeBackend ? false : true);
       else if (a === 'add-zone') startZoneEdit();
       else if (a === 'cancel-zone') endZoneEdit();
       else if (a === 'add-tracker') { $('[data-action="pair-back"]').hidden = false; renderSavedTrackers(); showView('view-pair'); }
@@ -1288,6 +2006,9 @@
     });
 
     $('#zone-radius').addEventListener('input', (e) => setRadius(Number(e.target.value)));
+    $('#map-search').addEventListener('input', onMapSearch);
+    $('#map-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
+    setupSheetDrag();
     $('#replay-range').addEventListener('input', (e) => { stopReplay(); setReplay(Number(e.target.value)); });
     $$('#zone-kinds .kind').forEach((b) => b.addEventListener('click', () => setKind(b.dataset.kind)));
     $('#zone-search').addEventListener('input', onZoneSearch);
@@ -1298,7 +2019,11 @@
     }));
     $('#panel-zone-edit').addEventListener('submit', saveZone);
 
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#confirm-lost').hidden) closeConfirm(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (!$('#confirm-lost').hidden) closeConfirm();
+      if (!$('#find-view').hidden) closeFind();
+    });
 
     setupHoldButton();
 
@@ -1312,8 +2037,11 @@
 
   // ---------- start ----------
   function start() {
+    applyTheme(localStorage.getItem('trackly-theme') || 'gold');
     $$('[data-kind-icon]').forEach((el) => { el.innerHTML = kindIcon(el.dataset.kindIcon); });
     bindEvents();
+    $('#backend-state').textContent = CFG.fakeBackend ? t('backend_test') : t('backend_real');
+    $('#backend-switch').setAttribute('aria-checked', String(!CFG.fakeBackend));
     applyLang();
     // remembered email: only the password is left to type (or the phone fills it in)
     const lastEmail = localStorage.getItem('trackly-last-email');

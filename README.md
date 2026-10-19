@@ -46,9 +46,18 @@ on the phone are two different "browsers" to the app, so each has its own accoun
 - Remembered on this phone: your email (the phone's password manager can save the password), and the
   tracker code + secret after pairing, so pairing again is one tap
 
+- Places on the map (shops, food, health, banks, fuel, mosques, schools, hotels, parks) read from the map itself, with category filters; tap one for details, directions or "safe zone here"
+- Search any place, street or mall; "Near Family Mall · 40 m" on the bag card
+- Find mode: an arrow (phone compass) points to the bag, distance, closer/farther, play sound
+- Alerts: left / arrived at a safe zone, low battery, battery almost empty (made by the server in real mode)
+- Share live with family (share.html, link ends after 1 h / 4 h / 1 day), police report (print / PDF)
+- Battery life estimate, smart stops in History, bag names + colours, 4 colour themes (Gold default)
+- Website with pre-orders: landing.html
+- ESP32 beep: docs/esp32-beep.md
+
 ## Real mode
-1. Review and run `supabase/proposed/001_claim_mode_safe_zones.sql` in Supabase (SQL Editor).
-2. Set `fakeBackend: false` in `js/config.js`.
+1. The database already has pairing, lost mode and safe zones. Run `supabase/proposed/002_security_alerts_sharing.sql` (security, alerts, sharing, beep, pre-orders).
+2. In the app: Account → "Real database" switch (no code change needed).
 
 ## Test it (real mode)
 1. Create an account. Supabase sends a confirmation email by default. For quick testing you can turn

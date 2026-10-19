@@ -117,9 +117,11 @@
       <div class="pill pill-main">
         <span class="logo">Trackly</span>
         <span class="divider"></span>
+        <span id="pill-dot" class="pill-dot" aria-hidden="true"></span>
         <select id="tracker-select" aria-label="Tracker"></select>
       </div>
       <span id="live-badge" class="live-badge" hidden><span class="dot"></span><span data-i18n="live">LIVE</span></span>
+      <button class="icon-btn pill" type="button" data-action="open-search" data-i18n-aria="search" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
       <button class="icon-btn pill" type="button" data-action="lang" aria-label="Language"><span class="lang-label">EN</span></button>
     </div>
 
@@ -129,6 +131,10 @@
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
     </div>
+
+    <!-- places: category filter + "zoom in" hint -->
+    <div id="places-bar" class="places-bar" hidden></div>
+    <div id="places-hint" class="places-hint" hidden data-i18n="places_zoom">Zoom in to see places</div>
 
     <!-- history day picker -->
     <div id="history-days" class="chips" hidden>
@@ -158,12 +164,14 @@
         <button type="button" class="style-opt" data-action="pick-style" data-style="sat"><span class="swatch sw-sat"></span><span data-i18n="style_sat">Satellite</span></button>
         <button type="button" class="style-opt" data-action="pick-style" data-style="hybrid"><span class="swatch sw-hybrid"></span><span data-i18n="style_hybrid">Satellite + labels</span></button>
       </div>
+      <div class="row-between picker-row">
+        <span data-i18n="show_path">Today’s path</span>
+        <button id="btn-path" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-path" data-i18n-aria="show_path" aria-label="Today’s path"></button>
+      </div>
     </div>
 
     <div id="map-controls" class="map-controls">
-      <button id="btn-path" class="fab" type="button" data-action="toggle-path" data-i18n-aria="show_path" aria-label="Today’s path">
-        <svg viewBox="0 0 24 24"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 18h6a3 3 0 0 0 0-6h-2a3 3 0 0 1 0-6h6"/></svg>
-      </button>
+      <button id="btn-places" class="fab" type="button" data-action="toggle-places" data-i18n-aria="places" aria-label="Places"><svg viewBox="0 0 24 24"><path d="M4 9l1.5-5h13L20 9M4 9h16M4 9v1a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0V9M5 12v8h14v-8M10 20v-5h4v5"/></svg></button>
       <button id="btn-style" class="fab" type="button" data-action="map-style" data-i18n-aria="map_style" aria-label="Map style">
         <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
       </button>
@@ -176,7 +184,7 @@
     </div>
 
     <div id="sheet" class="sheet">
-      <div class="handle"></div>
+      <button id="sheet-handle" class="handle-btn" type="button" aria-expanded="true" data-i18n-aria="toggle_card" aria-label="Show more or less"><span class="handle"></span></button>
 
       <!-- Map tab -->
       <div id="panel-map" class="panel">
@@ -185,6 +193,7 @@
             <p id="lost-label" class="lost-label" hidden data-i18n="lost_on">Lost mode is on</p>
             <h2 id="bag-name">—</h2>
             <p class="muted small"><span id="bag-area">—</span><span id="bag-distance"></span></p>
+            <p id="bag-near" class="near" hidden></p>
             <p id="bag-zone" class="zone-chip" hidden></p>
           </div>
           <div class="head-side">
@@ -198,7 +207,7 @@
         <p id="nosignal-note" class="note" hidden></p>
 
         <div class="stats">
-          <div class="stat"><span class="stat-label" data-i18n="battery">Battery</span><span id="stat-battery" class="stat-value">—</span></div>
+          <div class="stat"><span class="stat-label" data-i18n="battery">Battery</span><span id="stat-battery" class="stat-value">—</span><span id="stat-battery-sub" class="stat-sub"></span></div>
           <div class="stat"><span id="stat-2-label" class="stat-label" data-i18n="updated">Updated</span><span id="stat-updated" class="stat-value">—</span></div>
           <div class="stat"><span id="stat-3-label" class="stat-label" data-i18n="status">Status</span><span id="stat-status" class="stat-value">—</span></div>
         </div>
@@ -212,11 +221,17 @@
           </button>
         </div>
         <p id="hold-help" class="muted tiny center" data-i18n="hold_help">Press and hold the red button for 2 seconds to start live tracking</p>
+        <div class="quick">
+          <button class="quick-btn" type="button" data-action="share-live" data-hours="4"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg><span data-i18n="share_live_btn">Share live</span></button>
+          <button class="quick-btn" type="button" data-action="report" ><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg><span data-i18n="report_btn">Report</span></button>
+          <button class="quick-btn" type="button" data-action="find-sound"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span data-i18n="beep">Beep</span></button>
+        </div>
 
         <div id="lost-actions" class="actions" hidden>
           <button class="btn btn-secondary" type="button" data-action="share" data-i18n="share_live">Share location</button>
           <button class="btn btn-primary" type="button" data-action="found" data-i18n="found">I found my bag</button>
         </div>
+        <button id="lost-report" class="btn btn-ghost danger-text" type="button" data-action="report" data-i18n="report_btn_lost">Make a report for police</button>
       </div>
 
       <!-- History tab -->
@@ -279,6 +294,44 @@
       <div id="panel-account" class="panel" hidden>
         <h2 data-i18n="account">Account</h2>
         <p id="account-email" class="muted small"></p>
+
+        <section class="acc-section">
+          <h3 data-i18n="your_bags">Your bags</h3>
+          <ul id="bag-list" class="bag-list"></ul>
+        </section>
+
+        <section class="acc-section">
+          <h3 data-i18n="theme">Colour theme</h3>
+          <div id="theme-list" class="theme-list">
+            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="gold"><span class="tsw tsw-gold"></span><span data-i18n="theme_gold">Gold</span></button>
+            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="mint"><span class="tsw tsw-mint"></span><span data-i18n="theme_mint">Mint</span></button>
+            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="rose"><span class="tsw tsw-rose"></span><span data-i18n="theme_rose">Rose</span></button>
+            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="ocean"><span class="tsw tsw-ocean"></span><span data-i18n="theme_ocean">Ocean</span></button>
+          </div>
+        </section>
+
+        <section class="acc-section">
+          <h3 data-i18n="share_family">Share with family</h3>
+          <p class="muted small" data-i18n="share_family_sub">A link that shows your bag live, then stops working by itself.</p>
+          <div class="segmented small">
+            <button type="button" class="seg" data-action="share-live" data-hours="1" data-i18n="h1">1 hour</button>
+            <button type="button" class="seg" data-action="share-live" data-hours="4" data-i18n="h4">4 hours</button>
+            <button type="button" class="seg" data-action="share-live" data-hours="24" data-i18n="h24">1 day</button>
+          </div>
+        </section>
+
+        <section class="acc-section">
+          <h3 data-i18n="alerts">Recent alerts</h3>
+          <ul id="alert-list" class="alert-list"></ul>
+        </section>
+
+        <section class="acc-section">
+          <div class="row-between">
+            <div><h3 data-i18n="backend">Real database</h3><p id="backend-state" class="muted small"></p></div>
+            <button id="backend-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="backend" data-i18n-aria="backend" aria-label="Real database"></button>
+          </div>
+        </section>
+        <a class="btn btn-secondary" href="landing.html" data-i18n="landing_link">Trackly website &amp; pre-order</a>
         <button class="btn btn-secondary" type="button" data-action="add-tracker" data-i18n="add_tracker">Pair another tracker</button>
         <button class="btn btn-secondary" type="button" data-action="show-setup" data-i18n="install_help">Add to home screen</button>
         <button class="btn btn-ghost" type="button" data-action="logout" data-i18n="logout">Log out</button>
@@ -304,6 +357,68 @@
       </nav>
     </div>
   </section>
+
+  <!-- ============ SEARCH THE MAP ============ -->
+  <div id="search-panel" class="overlay" hidden role="dialog" aria-modal="true">
+    <div class="search-top">
+      <button class="icon-btn" type="button" data-action="close-search" data-i18n-aria="back" aria-label="Back"><svg class="flip-rtl" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <input id="map-search" type="search" autocomplete="off" data-i18n-ph="search_map_ph" placeholder="Search places…">
+    </div>
+    <ul id="map-search-results" class="search-results flat"></ul>
+  </div>
+
+  <!-- ============ FIND MODE ============ -->
+  <div id="find-view" class="overlay find" hidden role="dialog" aria-modal="true" aria-labelledby="find-title">
+    <div class="find-top">
+      <div><span class="label" data-i18n="find_title" id="find-title">Find your bag</span><strong id="find-name"></strong></div>
+      <button class="icon-btn" type="button" data-action="close-find" data-i18n-aria="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="find-main">
+      <div id="find-ring" class="find-ring">
+        <svg id="find-arrow" class="find-arrow" viewBox="0 0 100 100"><path d="M50 8 L78 82 L50 66 L22 82 Z"/></svg>
+      </div>
+      <strong id="find-dist" class="find-dist">…</strong>
+      <span id="find-dir" class="find-dir"></span>
+      <span id="find-trend" class="find-trend"></span>
+    </div>
+    <p class="muted small center" data-i18n="find_hint">Walk where the arrow points</p>
+    <div class="find-actions">
+      <button id="find-compass" class="btn btn-secondary btn-lg" type="button" data-action="find-compass" hidden><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span data-i18n="enable_compass">Use compass</span></button>
+      <button class="btn btn-primary btn-lg" type="button" data-action="find-sound"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span data-i18n="play_sound">Play sound</span></button>
+    </div>
+  </div>
+
+  <!-- ============ STOLEN BAG REPORT (printable) ============ -->
+  <div id="report-view" class="overlay report" hidden role="dialog" aria-modal="true" aria-labelledby="rp-title">
+    <div class="report-bar no-print">
+      <button class="icon-btn" type="button" data-action="close-report" data-i18n-aria="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div class="report-bar-actions">
+        <button class="btn btn-secondary" type="button" data-action="share-report"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg><span data-i18n="share">Share</span></button>
+        <button class="btn btn-primary" type="button" data-action="print-report"><svg viewBox="0 0 24 24"><path d="M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z"/></svg><span data-i18n="print_pdf">Print / PDF</span></button>
+      </div>
+    </div>
+    <article class="report-page">
+      <header class="report-head">
+        <span class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2"/></svg></span><span class="logo">Trackly</span></span>
+        <h1 id="rp-title" data-i18n="report_title">Lost / stolen bag report</h1>
+      </header>
+      <dl class="report-grid">
+        <dt data-i18n="bag">Bag</dt><dd id="rp-name"></dd>
+        <dt data-i18n="tracker_code">Tracker code</dt><dd id="rp-code" dir="ltr"></dd>
+        <dt data-i18n="owner">Owner</dt><dd id="rp-owner" dir="ltr"></dd>
+        <dt data-i18n="status">Status</dt><dd id="rp-mode"></dd>
+        <dt data-i18n="last_seen">Last seen</dt><dd id="rp-last"></dd>
+        <dt data-i18n="address">Address</dt><dd id="rp-address"></dd>
+        <dt data-i18n="coords">Coordinates</dt><dd id="rp-coords" dir="ltr"></dd>
+        <dt data-i18n="battery">Battery</dt><dd id="rp-battery"></dd>
+        <dt>Google Maps</dt><dd><a id="rp-maps" dir="ltr" target="_blank" rel="noopener"></a></dd>
+        <dt data-i18n="report_made">Report made</dt><dd id="rp-made"></dd>
+      </dl>
+      <div id="rp-map" class="report-map"></div>
+      <h2 data-i18n="report_points">Last 2 hours</h2>
+      <table class="report-table"><thead><tr><th data-i18n="time">Time</th><th data-i18n="coords">Coordinates</th><th data-i18n="battery">Battery</th></tr></thead><tbody id="rp-points"></tbody></table>
+    </article>
+  </div>
 
   <!-- ============ CONFIRM LOST MODE ============ -->
   <div id="confirm-lost" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="confirm-title">
