@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Trackly · Make a pairing card</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    /* Owner tool: type a tracker's code + secret → printable card with a QR code.
+       Everything happens in this browser; the secret is not sent anywhere. */
+    body { overflow: auto; }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 24px 20px 40px; display: flex; flex-direction: column; gap: 16px; }
+    .card { width: 85.6mm; height: 54mm; border-radius: 4mm; background: #0C0E12; color: #F5F2EC; padding: 4mm 5mm; display: grid; grid-template-columns: 1fr auto; gap: 3mm; align-items: center; margin: 0 auto; box-shadow: var(--shadow); }
+    .card .brand-mark { background: #E8B86D; color: #1A1307; width: 9mm; height: 9mm; border-radius: 2.5mm; }
+    .card .brand-mark svg { width: 5mm; height: 5mm; }
+    .card .logo { font-size: 5mm; color: #F5F2EC; }
+    .card .code { font: 700 4.4mm 'Sora', monospace; letter-spacing: .5mm; margin-top: 3mm; }
+    .card .hint { font-size: 2.6mm; color: #A39C90; margin-top: 1.5mm; line-height: 1.35; }
+    .card .qr { background: #fff; padding: 1.5mm; border-radius: 2mm; width: 30mm; height: 30mm; }
+    .card .qr svg, .card .qr img { width: 100%; height: 100%; display: block; }
+    @media print { .wrap > *:not(#out) { display: none !important; } body { background: #fff; } .card { box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Pairing card</h1>
+    <p class="muted">For you (the seller): makes the card that goes in the box. Scanning it with a phone camera opens Trackly and fills in the code and secret.</p>
+    <form id="f" class="form">
+      <label for="code">Tracker code</label><input id="code" placeholder="SB-0001" autocapitalize="characters" required>
+      <label for="secret">Secret</label><input id="secret" required>
+      <label for="url">App link</label><input id="url" value="https://suhaib11111.github.io/trackly/">
+      <button class="btn btn-primary btn-lg" type="submit">Make card</button>
+    </form>
+    <div id="out"></div>
+    <button id="print" class="btn btn-secondary btn-lg" type="button" hidden onclick="window.print()">Print</button>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <script>
+    document.getElementById('f').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const code = document.getElementById('code').value.trim().toUpperCase();
+      const secret = document.getElementById('secret').value.trim();
+      const base = document.getElementById('url').value.trim().replace(/#.*$/, '');
+      // the app reads #pair=CODE.SECRET (see parsePairText in js/app.js)
+      const link = base + '#pair=' + encodeURIComponent(code) + '.' + encodeURIComponent(secret);
+      const qr = qrcode(0, 'M'); qr.addData(link); qr.make();
+      const out = document.getElementById('out');
+      out.innerHTML = '<div class="card"><div><span class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2"/></svg></span><span class="logo">Trackly</span></span>' +
+        '<div class="code"></div><div class="hint">Scan with your phone camera to pair.<br>سکان بکە بۆ گرێدان · امسح للربط</div></div><div class="qr">' + qr.createSvgTag({ scalable: true, margin: 0 }) + '</div></div>';
+      out.querySelector('.code').textContent = code;
+      document.getElementById('print').hidden = false;
+    });
+  </script>
+</body>
+</html>

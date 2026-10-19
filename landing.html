@@ -245,6 +245,7 @@
 
     const CFG = window.TRACKLY_CONFIG;
     const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+    if (!CFG.fakeBackend) sb.rpc('count_visit', { p_page: 'landing' }); // daily visit counter, no personal data
     document.getElementById('order-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const name = document.getElementById('o-name').value.trim();

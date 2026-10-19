@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Trackly · Terms & privacy</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    body { overflow: auto; }
+    a.btn { text-decoration: none; }
+    .doc { max-width: 720px; margin: 0 auto; padding: calc(16px + var(--safe-top)) 20px calc(40px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 18px; }
+    .doc-top { display: flex; justify-content: space-between; align-items: center; }
+    .doc h1 { font-size: 30px; margin-top: 8px; }
+    .doc section { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+    .doc h2 { font-size: 18px; }
+    .doc p, .doc li { color: var(--text-2); font-size: 15px; line-height: 1.6; }
+    .doc ul { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; }
+    .doc .rule { border-color: var(--danger); background: var(--danger-soft); }
+    .doc .rule h2, .doc .rule p, .doc .rule li { color: var(--text); }
+    .doc textarea { width: 100%; min-height: 110px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 12px 16px; font: inherit; resize: vertical; }
+    .small-note { font-size: 12px; color: var(--text-2); }
+  </style>
+</head>
+<body>
+  <main class="doc">
+    <div class="doc-top">
+      <a class="brand" href="index.html" style="text-decoration:none;color:inherit"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2"/></svg></span><span class="logo">Trackly</span></a>
+      <button id="lang" class="lang-btn" type="button">EN</button>
+    </div>
+    <h1 data-t="title">Terms & privacy</h1>
+    <p class="small-note" data-t="updated">Last updated: October 2026</p>
+
+    <section class="rule">
+      <h2 data-t="r_t">The one rule: belongings, not people</h2>
+      <p data-t="r_p">Trackly is made to find your own bag. It is never allowed to secretly follow a person.</p>
+      <ul>
+        <li data-t="r_1">Only pair trackers you own, in bags you own.</li>
+        <li data-t="r_2">Never hide a tracker on another person, in their bag, car or belongings, without their clear consent.</li>
+        <li data-t="r_3">Accounts used to track people without consent are closed, and we cooperate with the police when asked.</li>
+        <li data-t="r_4">Found a tracker that isn't yours? Report it below. We can see which account it belongs to.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 data-t="s_t">What we store</h2>
+      <ul>
+        <li data-t="s_1">Your email and a securely stored password (handled by Supabase Auth).</li>
+        <li data-t="s_2">Your trackers' locations, battery and times, sent by the tracker.</li>
+        <li data-t="s_3">Your safe zones, alerts, family members and share links.</li>
+        <li data-t="s_4">If you turn on notifications: a notification address for your phone.</li>
+        <li data-t="s_5">A daily visit count per page and app error messages, with no names and no locations.</li>
+      </ul>
+      <p data-t="s_p">We never sell your data and we don't use advertising trackers. Your phone's own location is used only on your phone (for "My location", Find mode and the left-behind alert) and is not stored.</p>
+    </section>
+
+    <section>
+      <h2 data-t="k_t">How long we keep it</h2>
+      <ul>
+        <li data-t="k_1">Locations and alerts: 90 days, then deleted automatically every night.</li>
+        <li data-t="k_2">Share links: until they end (1 hour to 3 days).</li>
+        <li data-t="k_3">"Remove from my account" deletes that tracker's history, zones, links and family access straight away.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 data-t="w_t">Who can see your bag</h2>
+      <ul>
+        <li data-t="w_1">You.</li>
+        <li data-t="w_2">Family members you invite. You always see who has access and can remove them.</li>
+        <li data-t="w_3">People you send a live link to, only until the link ends.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 data-t="u_t">Using Trackly</h2>
+      <ul>
+        <li data-t="u_1">GPS and mobile networks are not perfect. Trackly helps you find your bag but can't promise it.</li>
+        <li data-t="u_2">In an emergency or theft, contact the police. The report in the app helps you give them the details.</li>
+        <li data-t="u_3">Keep your password private. You are responsible for what happens in your account.</li>
+      </ul>
+    </section>
+
+    <section id="report">
+      <h2 data-t="f_t">Report misuse or a tracker you found</h2>
+      <p data-t="f_p">Tell us what happened. If you found a tracker, include the code printed on it (e.g. SB-0001).</p>
+      <form id="rep-form" class="form" novalidate>
+        <label for="rep-about" data-t="f_about">Tracker code (if you have it)</label>
+        <input id="rep-about" maxlength="120" dir="ltr" placeholder="SB-0001">
+        <label for="rep-msg" data-t="f_msg">What happened?</label>
+        <textarea id="rep-msg" maxlength="1000" required></textarea>
+        <label for="rep-contact" data-t="f_contact">How can we reach you? (optional)</label>
+        <input id="rep-contact" maxlength="120">
+        <p id="rep-error" class="form-error" role="alert"></p>
+        <button id="rep-send" class="btn btn-primary btn-lg" type="submit" data-t="f_send">Send report</button>
+      </form>
+      <p id="rep-ok" hidden data-t="f_ok">Thank you. We'll look into it.</p>
+    </section>
+
+    <p class="small-note" data-t="legal">This page explains how Trackly works in plain words. It is not legal advice.</p>
+    <a class="btn btn-secondary" href="index.html" data-t="back">Back to Trackly</a>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    const T = {
+      ckb: { title: 'مەرج و تایبەتمەندی', updated: 'دوایین نوێکردنەوە: ئۆکتۆبەری ٢٠٢٦', r_t: 'یەک یاسا: کەلوپەل، نەک مرۆڤ', r_p: 'Trackly بۆ دۆزینەوەی جانتای خۆت دروستکراوە. هەرگیز ڕێگەپێدراو نییە بۆ بەدواداچوونی نهێنیی کەسێک.',
+        r_1: 'تەنها ئەو تراکەرانە گرێ بدە کە هی خۆتن، لە جانتای خۆتدا.', r_2: 'هەرگیز تراکەر لەسەر کەسێکی تر، لە جانتا، ئۆتۆمبێل یان کەلوپەلەکانیدا مەشارەوە بەبێ ڕەزامەندیی ڕوونی خۆی.',
+        r_3: 'ئەو هەژمارانەی بۆ بەدواداچوونی خەڵک بەبێ ڕەزامەندی بەکاردێن دادەخرێن، و هاوکاری پۆلیس دەکەین کاتێک داوا بکرێت.', r_4: 'تراکەرێکت دۆزیوەتەوە کە هی تۆ نییە؟ لە خوارەوە ڕاپۆرتی بکە.',
+        s_t: 'چی پاشەکەوت دەکەین', s_1: 'ئیمەیڵەکەت و وشەی نهێنییەکی پارێزراو (لەلایەن Supabase Auth).', s_2: 'شوێن، پاتری و کاتی تراکەرەکانت.', s_3: 'ناوچە پارێزراوەکان، ئاگادارکردنەوەکان، ئەندامانی خێزان و لینکەکانی هاوبەشی.',
+        s_4: 'ئەگەر ئاگادارکردنەوە هەڵبکەیت: ناونیشانێکی ئاگادارکردنەوە بۆ مۆبایلەکەت.', s_5: 'ژمارەی سەردانی ڕۆژانە و پەیامی هەڵەکانی ئەپ، بەبێ ناو و بەبێ شوێن.',
+        s_p: 'هەرگیز داتاکانت نافرۆشین و ڕیکلام بەکارناهێنین. شوێنی مۆبایلەکەت تەنها لەسەر مۆبایلەکەت بەکاردێت و پاشەکەوت ناکرێت.',
+        k_t: 'چەند ماوە هەڵیدەگرین', k_1: 'شوێن و ئاگادارکردنەوەکان: ٩٠ ڕۆژ، پاشان هەموو شەوێک بە خۆکار دەسڕدرێنەوە.', k_2: 'لینکەکانی هاوبەشی: تا کۆتایی دێن (١ کاتژمێر تا ٣ ڕۆژ).', k_3: '«لابردن لە هەژمارەکەم» دەستبەجێ مێژوو، ناوچە، لینک و دەستگەیشتنی خێزانی ئەو تراکەرە دەسڕێتەوە.',
+        w_t: 'کێ دەتوانێت جانتاکەت ببینێت', w_1: 'خۆت.', w_2: 'ئەو ئەندامانەی خێزان کە بانگهێشتیان دەکەیت. هەمیشە دەبینیت کێ دەستی پێی دەگات و دەتوانیت لایان ببەیت.', w_3: 'ئەو کەسانەی لینکی ڕاستەوخۆیان بۆ دەنێریت، تەنها تا لینکەکە کۆتایی دێت.',
+        u_t: 'بەکارهێنانی Trackly', u_1: 'GPS و تۆڕی مۆبایل تەواو نین. Trackly یارمەتیت دەدات بەڵام بەڵێن نادات.', u_2: 'لە کاتی فریاکەوتن یان دزیدا پەیوەندی بە پۆلیسەوە بکە. ڕاپۆرتی ناو ئەپەکە یارمەتیت دەدات.', u_3: 'وشەی نهێنییەکەت بپارێزە.',
+        f_t: 'ڕاپۆرتی خراپ بەکارهێنان یان تراکەرێکی دۆزراوە', f_p: 'پێمان بڵێ چی ڕوویدا. ئەگەر تراکەرێکت دۆزیوەتەوە، کۆدەکەی سەری بنووسە.', f_about: 'کۆدی تراکەر (ئەگەر هەیە)', f_msg: 'چی ڕوویدا؟', f_contact: 'چۆن پەیوەندیت پێوە بکەین؟ (ئارەزوومەندانە)', f_send: 'ناردنی ڕاپۆرت', f_ok: 'سوپاس. سەیری دەکەین.',
+        legal: 'ئەم پەڕەیە بە وشەی سادە ڕوونی دەکاتەوە Trackly چۆن کار دەکات. ڕاوێژی یاسایی نییە.', back: 'گەڕانەوە بۆ Trackly', err: 'تکایە کەمێک زیاتر بنووسە.', err2: 'نەنێردرا. دووبارە هەوڵ بدەوە.' },
+      ar: { title: 'الشروط والخصوصية', updated: 'آخر تحديث: أكتوبر 2026', r_t: 'القاعدة الوحيدة: أغراض، لا أشخاص', r_p: 'Trackly مصمم للعثور على حقيبتك. لا يُسمح أبداً بتتبع شخص سراً.',
+        r_1: 'اربط فقط أجهزة التتبع التي تملكها، في حقائب تملكها.', r_2: 'لا تُخفِ جهاز تتبع مع شخص آخر أو في حقيبته أو سيارته أو أغراضه بدون موافقته الواضحة.',
+        r_3: 'الحسابات التي تُستخدم لتتبع الأشخاص بدون موافقة يتم إغلاقها، ونتعاون مع الشرطة عند الطلب.', r_4: 'وجدت جهاز تتبع ليس لك؟ أبلغ عنه أدناه.',
+        s_t: 'ما الذي نحفظه', s_1: 'بريدك الإلكتروني وكلمة مرور محفوظة بأمان (عبر Supabase Auth).', s_2: 'مواقع أجهزتك والبطارية والأوقات.', s_3: 'المناطق الآمنة والتنبيهات وأفراد العائلة وروابط المشاركة.',
+        s_4: 'إذا فعّلت الإشعارات: عنوان إشعارات لهاتفك.', s_5: 'عدد زيارات يومي لكل صفحة ورسائل أخطاء التطبيق، بدون أسماء ولا مواقع.',
+        s_p: 'لا نبيع بياناتك أبداً ولا نستخدم إعلانات. موقع هاتفك يُستخدم على هاتفك فقط ولا يُحفظ.',
+        k_t: 'مدة الاحتفاظ', k_1: 'المواقع والتنبيهات: 90 يوماً، ثم تُحذف تلقائياً كل ليلة.', k_2: 'روابط المشاركة: حتى انتهائها (ساعة إلى 3 أيام).', k_3: '«إزالة من حسابي» تحذف فوراً سجل الجهاز ومناطقه وروابطه ووصول العائلة.',
+        w_t: 'من يمكنه رؤية حقيبتك', w_1: 'أنت.', w_2: 'أفراد العائلة الذين تدعوهم. ترى دائماً من لديه وصول ويمكنك إزالته.', w_3: 'من ترسل لهم رابطاً مباشراً، حتى ينتهي الرابط فقط.',
+        u_t: 'استخدام Trackly', u_1: 'GPS وشبكات الهاتف ليست مثالية. يساعدك Trackly لكنه لا يضمن العثور.', u_2: 'في حالة الطوارئ أو السرقة، اتصل بالشرطة. التقرير في التطبيق يساعدك.', u_3: 'احفظ كلمة مرورك سراً.',
+        f_t: 'الإبلاغ عن سوء استخدام أو جهاز وجدته', f_p: 'أخبرنا بما حدث. إذا وجدت جهاز تتبع، اكتب الرمز المطبوع عليه.', f_about: 'رمز الجهاز (إن وجد)', f_msg: 'ماذا حدث؟', f_contact: 'كيف نتواصل معك؟ (اختياري)', f_send: 'إرسال البلاغ', f_ok: 'شكراً لك. سننظر في الأمر.',
+        legal: 'تشرح هذه الصفحة طريقة عمل Trackly بكلمات بسيطة. ليست استشارة قانونية.', back: 'العودة إلى Trackly', err: 'يرجى كتابة المزيد قليلاً.', err2: 'لم يتم الإرسال. حاول مرة أخرى.' }
+    };
+    const EN = {}; document.querySelectorAll('[data-t]').forEach((el) => { EN[el.dataset.t] = el.textContent; });
+    EN.err = 'Please write a little more.'; EN.err2 = 'Not sent. Please try again.'; T.en = EN;
+    const LANGS = ['en', 'ckb', 'ar'];
+    let lang = (() => { try { const s = localStorage.getItem('trackly-lang'); if (LANGS.includes(s)) return s; } catch (e) {} const n = (navigator.language || '').toLowerCase(); return n.startsWith('ar') ? 'ar' : (n.startsWith('ku') || n.startsWith('ckb') ? 'ckb' : 'en'); })();
+    try { const th = localStorage.getItem('trackly-theme'); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+    const apply = () => {
+      document.documentElement.lang = lang; document.documentElement.dir = lang === 'en' ? 'ltr' : 'rtl';
+      document.querySelectorAll('[data-t]').forEach((el) => { if (T[lang][el.dataset.t]) el.textContent = T[lang][el.dataset.t]; });
+      document.getElementById('lang').textContent = { en: 'EN', ckb: 'کو', ar: 'ع' }[lang];
+    };
+    document.getElementById('lang').addEventListener('click', () => { lang = LANGS[(LANGS.indexOf(lang) + 1) % 3]; try { localStorage.setItem('trackly-lang', lang); } catch (e) {} apply(); });
+    apply();
+    const CFG = window.TRACKLY_CONFIG;
+    // reports always go to the real database (they're for you, the owner, to read in Supabase)
+    const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+    document.getElementById('rep-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('rep-msg').value.trim();
+      const err = document.getElementById('rep-error');
+      err.textContent = '';
+      if (msg.length < 5) { err.textContent = T[lang].err; return; }
+      const btn = document.getElementById('rep-send'); btn.disabled = true;
+      const { error } = await sb.rpc('submit_misuse_report', { p_about: document.getElementById('rep-about').value, p_message: msg, p_contact: document.getElementById('rep-contact').value });
+      btn.disabled = false;
+      if (error) { err.textContent = T[lang].err2; return; }
+      document.getElementById('rep-form').hidden = true;
+      document.getElementById('rep-ok').hidden = false;
+    });
+  })();
+  </script>
+</body>
+</html>

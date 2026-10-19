@@ -54,9 +54,14 @@ on the phone are two different "browsers" to the app, so each has its own accoun
 - Battery life estimate, smart stops in History, bag names + colours, 4 colour themes (Gold default)
 - Website with pre-orders: landing.html
 - ESP32 beep: docs/esp32-beep.md
+- Phone notifications (Account switch; Edge Function supabase/functions/send-alerts), QR card pairing (tools/qr-card.html makes the cards)
+- Forgot password, optional Google sign-in (docs/login-setup.md)
+- Left-behind alert, Park (movement alarm), family members with invite codes, unpair
+- Nightly clean-up (90 days), keep-alive job (.github/workflows/keep-alive.yml), error log + visit counter
+- Terms & privacy with the fair-use rule and a misuse report form: privacy.html
 
 ## Real mode
-1. The database already has pairing, lost mode and safe zones. Run `supabase/proposed/002_security_alerts_sharing.sql` (security, alerts, sharing, beep, pre-orders).
+1. The database already has pairing, lost mode and safe zones. Run 002, then `supabase/proposed/003_push_family_parked_cleanup.sql`. 002 is `supabase/proposed/002_security_alerts_sharing.sql` (security, alerts, sharing, beep, pre-orders).
 2. In the app: Account → "Real database" switch (no code change needed).
 
 ## Test it (real mode)

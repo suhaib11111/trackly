@@ -146,6 +146,8 @@
     const btn = $('#auth-submit');
     btn.textContent = state.authMode === 'login' ? t('login') : t('signup');
     $('#auth-password').autocomplete = state.authMode === 'login' ? 'current-password' : 'new-password';
+    $('#terms-row').hidden = state.authMode !== 'signup';
+    $('[data-action="forgot"]').hidden = state.authMode !== 'login';
   }
 
   async function onAuthSubmit(e) {
@@ -155,6 +157,7 @@
     const err = $('#auth-error');
     err.textContent = '';
     if (!email || password.length < 6) { err.textContent = t('err_fill'); return; }
+    if (state.authMode === 'signup' && !$('#terms-check').checked) { err.textContent = t('err_terms'); return; }
     const btn = $('#auth-submit');
     btn.disabled = true;
     try {
@@ -237,13 +240,14 @@
     if (!state.user) { showView('view-auth'); return; }
     $('#account-email').textContent = state.user.email || '';
     await loadTrackers();
-    if (!state.trackers.length) { renderSavedTrackers(); showView('view-pair'); $('[data-action="pair-back"]').hidden = true; return; }
+    if (sessionStorage.getItem('trackly-pending-join')) { await applyPendingJoin(); return; }
+    if (!state.trackers.length) { renderSavedTrackers(); applyPendingPair(); showView('view-pair'); $('[data-action="pair-back"]').hidden = true; return; }
     if (!localStorage.getItem('trackly-setup-done')) { showView('view-setup'); return; }
     openApp();
   }
 
   async function loadTrackers() {
-    const { data, error } = await sb.from('trackers').select('id, device_code, name, mode, color').order('created_at');
+    const { data, error } = await sb.from('trackers').select(CFG.fakeBackend ? '*' : 'id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted').order('created_at');
     if (error) { toast(errorText(error)); state.trackers = []; return; }
     state.trackers = data || [];
     const sel = $('#tracker-select');
@@ -434,6 +438,7 @@
       }
       if (!state.zoneEdit) renderMapPanel();
       renderFind();
+      checkLeftBehind();
     };
     // a quick first answer (the phone's last known spot), then live updates as you move
     navigator.geolocation.getCurrentPosition(onFix, () => {}, { maximumAge: 60000, timeout: 8000 });
@@ -768,6 +773,7 @@
 
     updateArea(loc.lat, loc.lng, stale);
     updateNear(loc);
+    renderParked();
   }
 
   // Area name from OpenStreetMap (cached, rounded so we don't call it too often)
@@ -853,7 +859,7 @@
     if (tab === 'zones') drawZones(true);
     if (tab === 'map') { state.followBag = true; drawZones(false); }
     $('#map-controls').hidden = tab === 'history' || tab === 'account';
-    if (tab === 'account') { renderAlerts(); renderBags(); }
+    if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); }
     renderPlaces();
     renderMapPanel();
   }
@@ -1659,19 +1665,23 @@
       if (was && !now && (z.notify_on === 'leave' || z.notify_on === 'both')) addAlert('zone', t('alert_left', { b: bag, z: z.name }));
       if (!was && now && (z.notify_on === 'arrive' || z.notify_on === 'both')) addAlert('zone', t('alert_arrived', { b: bag, z: z.name }));
     });
+    const tr = state.tracker;
+    if (CFG.fakeBackend && tr.parked_at && !tr.parked_alerted && distanceM(next, { lat: tr.parked_lat, lng: tr.parked_lng }) > 60) {
+      tr.parked_alerted = true; addAlert('moved', t('alert_moved', { b: bag }));
+    }
     const lim = CFG.lowBatteryPercent;
     if (typeof prev.battery === 'number' && typeof next.battery === 'number' && prev.battery > lim && next.battery <= lim) addAlert('battery', t('alert_low', { b: bag, n: next.battery }));
     if (typeof prev.battery === 'number' && typeof next.battery === 'number' && prev.battery > 5 && next.battery <= 5) addAlert('battery', t('alert_critical', { b: bag }));
   }
   // real database: alerts are made by the server (saved even when the app is closed)
-  const ALERT_TEXT = { zone_left: 'alert_left', zone_arrived: 'alert_arrived', battery_low: 'alert_low', battery_critical: 'alert_critical' };
+  const ALERT_TEXT = { zone_left: 'alert_left', zone_arrived: 'alert_arrived', battery_low: 'alert_low', battery_critical: 'alert_critical', moved: 'alert_moved' };
   async function serverAlerts() {
     const { data, error } = await sb.from('alerts').select('tracker_id, kind, zone_name, battery, created_at').order('created_at', { ascending: false }).limit(20);
     if (error || !data) return null;
     return data.map((a) => {
       const tr = state.trackers.find((x) => x.id === a.tracker_id);
       const b = tr ? (tr.name || tr.device_code) : '';
-      return { kind: a.kind.startsWith('battery') ? 'battery' : 'zone', at: a.created_at, text: t(ALERT_TEXT[a.kind], { b, z: a.zone_name || '', n: a.battery }) };
+      return { kind: a.kind.startsWith('battery') ? 'battery' : (a.kind === 'moved' ? 'moved' : 'zone'), at: a.created_at, text: t(ALERT_TEXT[a.kind], { b, z: a.zone_name || '', n: a.battery }) };
     });
   }
   async function renderAlerts() {
@@ -1891,7 +1901,23 @@
         colors.appendChild(b);
       });
       const code = document.createElement('span'); code.className = 'bag-code'; code.textContent = tr.device_code;
-      li.append(dot, name, code, colors);
+      const mine = !tr.owner_id || !state.user || tr.owner_id === state.user.id;
+      name.disabled = !mine;
+      const fam = document.createElement('div'); fam.className = 'bag-family';
+      const famTitle = document.createElement('span'); famTitle.className = 'label'; famTitle.textContent = t('family_access');
+      const members = document.createElement('div'); members.className = 'members';
+      fam.append(famTitle, members);
+      const acts = document.createElement('div'); acts.className = 'bag-acts';
+      if (mine) {
+        const inv = document.createElement('button'); inv.type = 'button'; inv.className = 'btn btn-secondary'; inv.textContent = t('invite_family');
+        inv.addEventListener('click', () => inviteFamily(tr));
+        const un = document.createElement('button'); un.type = 'button'; un.className = 'btn btn-ghost danger-text'; un.textContent = t('unpair');
+        un.addEventListener('click', () => unpair(tr));
+        acts.append(inv, un);
+      }
+      li.append(dot, name, code, colors, fam, acts);
+      renderMembers(tr, members);
+      if (!mine) colors.hidden = true;
       ul.appendChild(li);
     });
   }
@@ -1927,6 +1953,278 @@
     location.reload();
   }
 
+  // =====================================================================
+  // PHONE NOTIFICATIONS (real database): subscribe this phone to the send-alerts function
+  // =====================================================================
+  const PUSH_URL = CFG.supabaseUrl + '/functions/v1/send-alerts';
+  function b64ToBytes(b64) {
+    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  }
+  async function pushState() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !window.isSecureContext) return 'unsupported';
+    if (window.Notification && Notification.permission === 'denied') return 'blocked';
+    const reg = await navigator.serviceWorker.ready;
+    return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
+  }
+  async function renderPushSwitch() {
+    const sw = $('#push-switch');
+    if (!sw) return;
+    const st = await pushState();
+    sw.setAttribute('aria-checked', String(st === 'on'));
+    sw.disabled = st === 'unsupported';
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    $('#push-state').textContent = st === 'unsupported' ? (ios && !standalone ? t('push_ios_install') : t('push_unsupported'))
+      : st === 'blocked' ? t('push_blocked') : (st === 'on' ? t('push_on') : t('push_off'));
+  }
+  async function togglePush() {
+    const st = await pushState();
+    if (st === 'unsupported') { renderPushSwitch(); return; }
+    const reg = await navigator.serviceWorker.ready;
+    if (st === 'on') {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) { await sb.rpc('delete_push_subscription', { p_endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      renderPushSwitch(); return;
+    }
+    if ((await Notification.requestPermission()) !== 'granted') { renderPushSwitch(); toast(t('push_blocked')); return; }
+    if (CFG.fakeBackend) { toast(t('push_test_mode')); renderPushSwitch(); return; } // test mode: in-app alerts only
+    try {
+      const { publicKey } = await (await fetch(PUSH_URL)).json();
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+      const { error } = await sb.rpc('save_push_subscription', { p_sub: sub.toJSON(), p_lang: state.lang });
+      if (error) throw error;
+      toast(t('push_on'));
+    } catch (e) { toast(t('err_generic')); reportError(e); }
+    renderPushSwitch();
+  }
+
+  // =====================================================================
+  // QR PAIRING — scan the card with the camera, or open a pairing link (…#pair=CODE.SECRET)
+  // =====================================================================
+  // accepted: "TRACKLY:SB-0001:secret", a link with #pair=SB-0001.secret, or {"code":"…","secret":"…"}
+  function parsePairText(text) {
+    const s = String(text || '').trim();
+    let m = /^TRACKLY:([A-Z0-9-]+):(.+)$/i.exec(s);
+    if (m) return { code: m[1].toUpperCase(), secret: m[2] };
+    m = /[#&?]pair=([A-Z0-9-]+)\.([^&#\s]+)/i.exec(s);
+    if (m) return { code: m[1].toUpperCase(), secret: decodeURIComponent(m[2]) };
+    try { const j = JSON.parse(s); if (j.code && j.secret) return { code: String(j.code).toUpperCase(), secret: String(j.secret) }; } catch (e) { /* not JSON */ }
+    return null;
+  }
+  const scan = { stream: null, timer: null, detector: null };
+  async function openScanner() {
+    if (!navigator.mediaDevices || !window.isSecureContext) { toast(t('scan_https')); return; }
+    $('#scan-view').hidden = false;
+    $('#scan-msg').textContent = t('scan_hint');
+    try {
+      scan.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    } catch (e) { $('#scan-msg').textContent = t('scan_denied'); return; }
+    const video = $('#scan-video');
+    video.srcObject = scan.stream;
+    await video.play().catch(() => {});
+    if ('BarcodeDetector' in window) { try { scan.detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch (e) { scan.detector = null; } }
+    const canvas = document.createElement('canvas'), ctx = canvas.getContext('2d', { willReadFrequently: true });
+    scan.timer = setInterval(async () => {
+      if (video.readyState < 2) return;
+      let text = null;
+      if (scan.detector) { try { const r = await scan.detector.detect(video); if (r[0]) text = r[0].rawValue; } catch (e) { scan.detector = null; } }
+      else if (window.jsQR) {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const r = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (r) text = r.data;
+      }
+      if (!text) return;
+      const p = parsePairText(text);
+      if (!p) { $('#scan-msg').textContent = t('scan_not_trackly'); return; }
+      if (navigator.vibrate) navigator.vibrate(60);
+      closeScanner();
+      $('#pair-code').value = p.code; $('#pair-secret').value = p.secret;
+      $('#pair-name').focus();
+      toast(t('scan_ok'));
+    }, 250);
+  }
+  function closeScanner() {
+    clearInterval(scan.timer); scan.timer = null;
+    if (scan.stream) scan.stream.getTracks().forEach((tr) => tr.stop());
+    scan.stream = null;
+    $('#scan-view').hidden = true;
+  }
+  // links opened from the phone camera: #pair=CODE.SECRET or #join=INVITE
+  function takeLinkAction() {
+    const h = location.hash;
+    const p = parsePairText(h);
+    const j = /[#&]join=([A-Z0-9]{6,12})/i.exec(h);
+    if (p) sessionStorage.setItem('trackly-pending-pair', JSON.stringify(p));
+    if (j) sessionStorage.setItem('trackly-pending-join', j[1].toUpperCase());
+    if (p || j) history.replaceState(null, '', location.pathname + location.search);
+  }
+  function applyPendingPair() {
+    try {
+      const p = JSON.parse(sessionStorage.getItem('trackly-pending-pair') || 'null');
+      if (!p) return false;
+      sessionStorage.removeItem('trackly-pending-pair');
+      $('#pair-code').value = p.code; $('#pair-secret').value = p.secret;
+      return true;
+    } catch (e) { return false; }
+  }
+  async function applyPendingJoin() {
+    const code = sessionStorage.getItem('trackly-pending-join');
+    if (!code || !state.user) return;
+    sessionStorage.removeItem('trackly-pending-join');
+    await joinFamily(code);
+  }
+
+  // =====================================================================
+  // PASSWORD RESET + GOOGLE
+  // =====================================================================
+  async function forgotPassword() {
+    const email = $('#auth-email').value.trim();
+    if (!email) { $('#auth-error').textContent = t('err_email_first'); $('#auth-email').focus(); return; }
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+    if (error) { $('#auth-error').textContent = errorText(error); return; }
+    toast(t('reset_sent'));
+  }
+  async function saveNewPassword(e) {
+    e.preventDefault();
+    const pw = $('#newpw-input').value;
+    if (pw.length < 6) { $('#newpw-error').textContent = t('err_fill'); return; }
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) { $('#newpw-error').textContent = errorText(error); return; }
+    $('#newpw-view').hidden = true;
+    toast(t('pw_changed'));
+    route();
+  }
+  async function googleLogin() {
+    if (CFG.fakeBackend) { toast(t('google_test_mode')); return; }
+    const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
+    if (error) $('#auth-error').textContent = errorText(error);
+  }
+
+  // =====================================================================
+  // LEFT BEHIND — you walked away from your bag (works while Trackly is open)
+  // =====================================================================
+  const behind = { together: false, alerted: false };
+  function leftBehindOn() { return localStorage.getItem('trackly-left-behind') !== '0'; }
+  function checkLeftBehind() {
+    if (!leftBehindOn() || !state.me || !state.recent[0] || !state.tracker) return;
+    const loc = state.recent[0];
+    if (ageSeconds(loc) > 15 * 60 || state.tracker.mode === 'lost') return;
+    const d = distanceM(state.me, loc);
+    if (d < 60) { behind.together = true; behind.alerted = false; return; }
+    // only after you were together, the bag is still, you're 120 m+ away, and it isn't at home / in a safe zone
+    const z = zoneAt(loc);
+    if (behind.together && !behind.alerted && d > 120 && !(z && z.kind === 'home') && !z) {
+      behind.alerted = true; behind.together = false;
+      addAlert('behind', t('alert_left_behind', { b: state.tracker.name || state.tracker.device_code, d: fmtDistance(d) }));
+    }
+  }
+  function toggleLeftBehind() {
+    localStorage.setItem('trackly-left-behind', leftBehindOn() ? '0' : '1');
+    $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
+    if (leftBehindOn()) locateMe(false);
+  }
+
+  // =====================================================================
+  // PARK — movement alarm: alert if the parked bag moves 60 m+
+  // =====================================================================
+  async function togglePark() {
+    const tr = state.tracker;
+    if (!tr) return;
+    const on = !tr.parked_at;
+    const { data, error } = await sb.rpc('set_parked', { p_tracker: tr.id, p_on: on });
+    if (error) { toast(errorText(error)); return; }
+    if (on && data) Object.assign(tr, { parked_at: data.parked_at, parked_lat: data.lat, parked_lng: data.lng, parked_alerted: false });
+    else Object.assign(tr, { parked_at: null, parked_lat: null, parked_lng: null, parked_alerted: false });
+    toast(on ? t('park_on') : t('park_off'));
+    renderMapPanel();
+  }
+  function renderParked() {
+    const tr = state.tracker, on = !!(tr && tr.parked_at);
+    $('#park-btn').classList.toggle('on', on);
+    $('#park-btn span').textContent = on ? t('park_btn_on') : t('park_btn');
+    $('#parked-chip').hidden = !on;
+    if (map.parkCircle) { map.m.removeLayer(map.parkCircle); map.parkCircle = null; }
+    if (on && tr.parked_lat != null && state.tab === 'map' && !state.zoneEdit) {
+      map.parkCircle = L.circle([tr.parked_lat, tr.parked_lng], { radius: 60, color: cssVar('--warn'), weight: 2, dashArray: '3 6', fillOpacity: 0.05, interactive: false }).addTo(map.m);
+    }
+  }
+
+  // =====================================================================
+  // FAMILY — invite family accounts to a bag, see who has access, leave / remove
+  // =====================================================================
+  async function inviteFamily(tr) {
+    const { data, error } = await sb.rpc('create_member_invite', { p_tracker: tr.id });
+    if (error || !data) { toast(errorText(error || {})); return; }
+    const url = new URL('#join=' + data, location.href).href;
+    const text = t('invite_text', { b: tr.name || tr.device_code, c: data });
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Trackly', text, url }); return; }
+      await navigator.clipboard.writeText(text + '\n' + url);
+      toast(t('invite_copied', { c: data }));
+    } catch (e) { toast(t('invite_copied', { c: data })); }
+  }
+  async function joinFamily(code) {
+    const { data, error } = await sb.rpc('join_tracker', { p_code: code });
+    if (error) { toast(errorText(error)); return; }
+    if (!data) { toast(t('err_invite')); return; }
+    toast(t('joined'));
+    await loadTrackers();
+    localStorage.setItem('trackly-tracker', data);
+    if (!localStorage.getItem('trackly-setup-done')) localStorage.setItem('trackly-setup-done', '1');
+    openApp();
+  }
+  async function renderMembers(tr, box) {
+    const { data } = await sb.rpc('list_members', { p_tracker: tr.id });
+    box.innerHTML = '';
+    (data || []).forEach((m) => {
+      const row = document.createElement('div');
+      row.className = 'member';
+      const who = document.createElement('span');
+      who.textContent = m.email + (m.owner ? ' · ' + t('owner') : '') + (m.me ? ' · ' + t('you') : '');
+      row.appendChild(who);
+      const iAmOwner = tr.owner_id === (state.user && state.user.id);
+      if (!m.owner && (iAmOwner || m.me)) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'link-btn danger-text';
+        b.textContent = m.me ? t('leave') : t('remove');
+        b.addEventListener('click', async () => {
+          if (!confirm(m.me ? t('leave_q') : t('remove_q', { e: m.email }))) return;
+          const { error } = await sb.rpc('remove_member', { p_tracker: tr.id, p_user: m.user_id });
+          if (error) { toast(errorText(error)); return; }
+          if (m.me) { await loadTrackers(); route(); } else renderMembers(tr, box);
+        });
+        row.appendChild(b);
+      }
+      box.appendChild(row);
+    });
+  }
+  async function unpair(tr) {
+    if (!confirm(t('unpair_q', { b: tr.name || tr.device_code }))) return;
+    const { error } = await sb.rpc('unpair_tracker', { p_tracker: tr.id });
+    if (error) { toast(errorText(error)); return; }
+    toast(t('unpaired'));
+    localStorage.removeItem('trackly-tracker');
+    await loadTrackers();
+    route();
+  }
+
+  // =====================================================================
+  // ERRORS + VISITS (real database only; no personal data in the counter)
+  // =====================================================================
+  function reportError(e) {
+    if (CFG.fakeBackend) return;
+    try { sb.rpc('log_client_error', { p_message: String((e && (e.stack || e.message)) || e).slice(0, 500), p_page: 'app' }); } catch (x) { /* ignore */ }
+  }
+  function countVisit() {
+    if (CFG.fakeBackend || sessionStorage.getItem('trackly-counted')) return;
+    sessionStorage.setItem('trackly-counted', '1');
+    sb.rpc('count_visit', { p_page: 'app' });
+  }
+
   // ---------- events ----------
   function bindEvents() {
     document.addEventListener('click', async (e) => {
@@ -1945,6 +2243,14 @@
       else if (a === 'find-sound') requestBuzz();
       else if (a === 'toggle-places') togglePlaces();
       else if (a === 'open-search') openSearch();
+      else if (a === 'scan-qr') openScanner();
+      else if (a === 'close-scan') closeScanner();
+      else if (a === 'forgot') forgotPassword();
+      else if (a === 'google') googleLogin();
+      else if (a === 'push') togglePush();
+      else if (a === 'left-behind') toggleLeftBehind();
+      else if (a === 'park') togglePark();
+      else if (a === 'join-family') { const c = $('#join-code').value.trim(); if (c) joinFamily(c); }
       else if (a === 'close-search') closeSearch();
       else if (a === 'confirm-lost') { closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
       else if (a === 'cancel-lost') closeConfirm();
@@ -2006,6 +2312,7 @@
     });
 
     $('#zone-radius').addEventListener('input', (e) => setRadius(Number(e.target.value)));
+    $('#newpw-form').addEventListener('submit', saveNewPassword);
     $('#map-search').addEventListener('input', onMapSearch);
     $('#map-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
     setupSheetDrag();
@@ -2032,12 +2339,23 @@
 
     sb.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') { unsubscribe(); showView('view-auth'); }
+      if (event === 'PASSWORD_RECOVERY') $('#newpw-view').hidden = false;
     });
   }
 
   // ---------- start ----------
   function start() {
     applyTheme(localStorage.getItem('trackly-theme') || 'gold');
+    takeLinkAction();
+    // a card / invite link opened while Trackly is already open
+    window.addEventListener('hashchange', () => {
+      takeLinkAction();
+      if (!state.user) return;
+      if (sessionStorage.getItem('trackly-pending-join')) applyPendingJoin();
+      else if (applyPendingPair()) { $('[data-action="pair-back"]').hidden = !state.trackers.length; showView('view-pair'); }
+    });
+    window.addEventListener('error', (e) => reportError(e.error || e.message));
+    window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
     $$('[data-kind-icon]').forEach((el) => { el.innerHTML = kindIcon(el.dataset.kindIcon); });
     bindEvents();
     $('#backend-state').textContent = CFG.fakeBackend ? t('backend_test') : t('backend_real');
@@ -2049,7 +2367,13 @@
     initMap();
     map.m.on('move', syncEditCircle);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-    route().catch(() => { showView('view-auth'); toast(t('err_generic')); });
+    $('#google-btn').hidden = !CFG.googleLogin;
+    $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
+    countVisit();
+    route().then(() => {
+      // left-behind needs the phone's location: start it quietly if the user already allowed it
+      if (leftBehindOn() && navigator.permissions && state.tracker) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') locateMe(false); }).catch(() => {});
+    }).catch((e) => { reportError(e); showView('view-auth'); toast(t('err_generic')); });
   }
 
   start();

@@ -37,7 +37,7 @@
   };
 
   // ---------- storage ----------
-  const empty = () => ({ users: [], session: null, trackers: [], locations: [], safe_zones: [], silent: {}, shares: [], preorders: [], claim_fails: [] });
+  const empty = () => ({ users: [], session: null, trackers: [], locations: [], safe_zones: [], silent: {}, shares: [], preorders: [], claim_fails: [], members: [], invites: [] });
   function load() {
     try { return Object.assign(empty(), JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { return empty(); }
   }
@@ -68,9 +68,9 @@
   }
 
   // ---------- "Row Level Security": you only see your own rows ----------
-  const myTrackerIds = () => db.trackers.filter((t) => t.owner_id === me()).map((t) => t.id);
+  const myTrackerIds = () => db.trackers.filter((t) => t.owner_id === me() || db.members.some((m) => m.tracker_id === t.id && m.user_id === me())).map((t) => t.id);
   const visible = {
-    trackers: (r) => r.owner_id === me(),
+    trackers: (r) => r.owner_id === me() || db.members.some((m) => m.tracker_id === r.id && m.user_id === me()),
     locations: (r) => myTrackerIds().includes(r.tracker_id),
     safe_zones: (r) => r.owner_id === me()
   };
@@ -154,6 +154,12 @@
       return ok({ name: tr ? tr.name : '', mode: tr ? tr.mode : 'normal', expires_at: sh.expires_at, last: last || null,
         trail: pts.filter((l) => Date.now() - new Date(l.created_at) < 30 * 60e3).map((l) => [l.lat, l.lng]) });
     }
+    if (name === 'log_client_error' || name === 'count_visit') return ok(null);
+    if (name === 'submit_misuse_report') {
+      if (String(args.p_message || '').trim().length < 5) return fail('too short');
+      db.reports = (db.reports || []).concat({ about: args.p_about, message: args.p_message, at: new Date().toISOString() }); save();
+      return ok(null);
+    }
     if (name === 'submit_preorder') {
       if (!String(args.p_name || '').trim() || !/^[+0-9 ]{7,20}$/.test(String(args.p_phone || '').trim())) return fail('bad_input');
       db.preorders.push({ name: args.p_name, phone: args.p_phone, city: args.p_city || '', note: args.p_note || '', at: new Date().toISOString() });
@@ -178,15 +184,59 @@
     }
     if (name === 'set_tracker_mode') {
       if (!['normal', 'lost'].includes(args.p_mode)) return fail('bad mode');
-      const tr = db.trackers.find((t) => t.id === args.p_tracker && t.owner_id === me());
+      const tr = db.trackers.find((t) => t.id === args.p_tracker && myTrackerIds().includes(t.id));
       if (!tr) return fail('not your tracker');
       tr.mode = args.p_mode; save();
       emit('UPDATE', 'trackers', tr);
       return ok(null);
     }
     const mineTr = (id) => db.trackers.find((t) => t.id === id && t.owner_id === me());
-    if (name === 'request_buzz') {
+    const seeTr = (id) => db.trackers.find((t) => t.id === id && myTrackerIds().includes(t.id));
+    if (name === 'save_push_subscription' || name === 'delete_push_subscription') return ok(null);
+    if (name === 'set_parked') {
+      const tr = seeTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      const l = lastOf(tr.id);
+      if (args.p_on) { if (!l) return fail('no location yet'); Object.assign(tr, { parked_at: new Date().toISOString(), parked_lat: l.lat, parked_lng: l.lng, parked_alerted: false }); }
+      else Object.assign(tr, { parked_at: null, parked_lat: null, parked_lng: null, parked_alerted: false });
+      save();
+      return ok(args.p_on ? { parked_at: tr.parked_at, lat: tr.parked_lat, lng: tr.parked_lng } : null);
+    }
+    if (name === 'create_member_invite') {
       const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(4))).map((b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+      db.invites.push({ code, tracker_id: tr.id, expires_at: Date.now() + 2 * 86400e3, used_by: null }); save();
+      return ok(code);
+    }
+    if (name === 'join_tracker') {
+      const inv = db.invites.find((x) => x.code === String(args.p_code || '').trim().toUpperCase() && !x.used_by && x.expires_at > Date.now());
+      if (!inv) return ok(null);
+      if (!db.members.some((m) => m.tracker_id === inv.tracker_id && m.user_id === me()) && !mineTr(inv.tracker_id)) db.members.push({ tracker_id: inv.tracker_id, user_id: me() });
+      inv.used_by = me(); save();
+      return ok(inv.tracker_id);
+    }
+    if (name === 'list_members') {
+      const tr = seeTr(args.p_tracker); if (!tr) return ok(null);
+      const email = (id) => (db.users.find((u) => u.id === id) || {}).email || '?';
+      return ok([{ user_id: tr.owner_id, email: email(tr.owner_id), owner: true, me: tr.owner_id === me() }]
+        .concat(db.members.filter((m) => m.tracker_id === tr.id).map((m) => ({ user_id: m.user_id, email: email(m.user_id), owner: false, me: m.user_id === me() }))));
+    }
+    if (name === 'remove_member') {
+      if (!(args.p_user === me() || mineTr(args.p_tracker))) return fail('not allowed');
+      db.members = db.members.filter((m) => !(m.tracker_id === args.p_tracker && m.user_id === args.p_user)); save();
+      return ok(null);
+    }
+    if (name === 'unpair_tracker') {
+      const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      db.members = db.members.filter((m) => m.tracker_id !== tr.id);
+      db.safe_zones = db.safe_zones.filter((z) => z.tracker_id !== tr.id);
+      db.locations = db.locations.filter((l) => l.tracker_id !== tr.id);
+      db.shares = db.shares.filter((x) => x.tracker_id !== tr.id);
+      db.trackers = db.trackers.filter((t) => t.id !== tr.id);   // free again: the next pairing starts fresh
+      save();
+      return ok(null);
+    }
+    if (name === 'request_buzz') {
+      const tr = db.trackers.find((t) => t.id === args.p_tracker && myTrackerIds().includes(t.id)); if (!tr) return fail('not your tracker');
       tr.buzz_requested_at = new Date().toISOString(); save();
       return ok(null);
     }
@@ -234,6 +284,14 @@
       return { error: null };
     },
     async getSession() { return { data: { session: db.session }, error: null }; },
+    async resetPasswordForEmail() { await wait(400); return { data: {}, error: null }; },   // test mode: pretend the email was sent
+    async updateUser({ password }) {
+      if (!db.session) return { data: null, error: { message: 'not signed in' } };
+      const u = db.users.find((x) => x.id === db.session.user.id);
+      if (u && password) { u.pw = await hash(password); save(); }
+      return { data: { user: db.session.user }, error: null };
+    },
+    async signInWithOAuth() { return { data: null, error: { message: 'Google sign-in needs the real database' } }; },
     onAuthStateChange(cb) {
       authListeners.add(cb);
       return { data: { subscription: { unsubscribe: () => authListeners.delete(cb) } } };

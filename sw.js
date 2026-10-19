@@ -1,11 +1,12 @@
 // Trackly service worker: caches the app shell so it opens fast and works as an installed app.
 // Live data (Supabase, map tiles) always comes from the network.
-const CACHE = 'trackly-v5';
+const CACHE = 'trackly-v6';
 const SHELL = [
   './',
   './index.html',
   './share.html',
   './landing.html',
+  './privacy.html',
   './css/styles.css',
   './js/config.js',
   './js/fake-backend.js',

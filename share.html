@@ -74,6 +74,7 @@
 
     const CFG = window.TRACKLY_CONFIG;
     const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
+    if (!CFG.fakeBackend) sb.rpc('count_visit', { p_page: 'share' }); // daily visit counter, no personal data
     const token = new URLSearchParams(location.search).get('t') || '';
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
     const m = L.map('map', { zoomControl: false }).setView([36.1911, 44.0092], 15);
