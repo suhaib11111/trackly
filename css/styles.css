@@ -723,3 +723,16 @@ html[dir="rtl"] .pchip { padding: 0 6px 0 12px; }
 .scan-top { position: absolute; top: calc(14px + var(--safe-top)); right: 16px; }
 html[dir="rtl"] .scan-top { right: auto; left: 16px; }
 .scan-msg { position: absolute; left: 16px; right: 16px; bottom: calc(40px + var(--safe-bottom)); text-align: center; color: #fff; font-weight: 600; font-size: 15px; }
+
+/* password box with the eye button */
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-inline-end: 56px; }
+.pw-eye {
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 44px; border: none; background: none; border-radius: 12px;
+  color: var(--text-2); display: grid; place-items: center; cursor: pointer;
+}
+.pw-eye:active { background: var(--card-2); }
+.pw-eye .i-eye-off, .pw-eye[aria-pressed="true"] .i-eye { display: none; }
+.pw-eye[aria-pressed="true"] .i-eye-off { display: block; }
+.pw-eye[aria-pressed="true"] { color: var(--accent-strong); }

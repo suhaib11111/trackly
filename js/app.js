@@ -84,6 +84,8 @@
     if (msg.includes('invalid_code')) return t('err_invalid_code');
     if (msg.includes('already_paired')) return t('err_already_paired');
     if (msg.includes('too_many')) return t('err_too_many');
+    if (/rate limit|over_email_send_rate_limit/i.test(msg)) return t('err_email_limit');
+    if (/email not confirmed/i.test(msg)) return t('err_not_confirmed');
     if (msg.toLowerCase().includes('invalid login')) return t('err_login');
     if (msg && msg.length < 140 && !msg.includes('fetch')) return msg;
     return t('err_generic');
@@ -2243,6 +2245,14 @@
       else if (a === 'find-sound') requestBuzz();
       else if (a === 'toggle-places') togglePlaces();
       else if (a === 'open-search') openSearch();
+      else if (a === 'toggle-pw') {
+        const inp = document.getElementById(el.dataset.target);
+        const show = inp.type === 'password';
+        inp.type = show ? 'text' : 'password';
+        el.setAttribute('aria-pressed', String(show));
+        el.setAttribute('aria-label', show ? t('hide_pw') : t('show_pw'));
+        inp.focus();
+      }
       else if (a === 'scan-qr') openScanner();
       else if (a === 'close-scan') closeScanner();
       else if (a === 'forgot') forgotPassword();

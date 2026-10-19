@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    show_pw: "Show password", hide_pw: "Hide password", err_email_limit: "Too many emails were sent in the last hour. Wait a bit, or ask the owner to turn off email confirmation.", err_not_confirmed: "Please confirm your email first (check your inbox), then log in.",
     push_title: "Phone notifications",
     push_on: "On: alerts come to this phone, even when Trackly is closed.",
     push_off: "Off",
@@ -205,6 +206,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    show_pw: "پیشاندانی وشەی نهێنی", hide_pw: "شاردنەوەی وشەی نهێنی", err_email_limit: "لە کاتژمێری ڕابردوودا ئیمەیڵی زۆر نێردراوە. کەمێک چاوەڕێ بکە.", err_not_confirmed: "تکایە سەرەتا ئیمەیڵەکەت پشتڕاست بکەرەوە، پاشان بچۆ ژوورەوە.",
     push_title: "ئاگادارکردنەوەی مۆبایل",
     push_on: "هەڵکراوە: ئاگادارکردنەوەکان دێنە ئەم مۆبایلە، تەنانەت کاتێک Trackly داخراوە.",
     push_off: "کوژاوە",
@@ -406,6 +408,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    show_pw: "إظهار كلمة المرور", hide_pw: "إخفاء كلمة المرور", err_email_limit: "تم إرسال رسائل كثيرة خلال الساعة الماضية. انتظر قليلاً.", err_not_confirmed: "يرجى تأكيد بريدك الإلكتروني أولاً، ثم تسجيل الدخول.",
     push_title: "إشعارات الهاتف",
     push_on: "مفعّلة: تصل التنبيهات إلى هذا الهاتف حتى عندما يكون Trackly مغلقاً.",
     push_off: "متوقفة",

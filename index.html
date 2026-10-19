@@ -46,7 +46,10 @@
       <label for="auth-email" data-i18n="email">Email</label>
       <input id="auth-email" name="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false" required>
       <label for="auth-password" data-i18n="password">Password</label>
-      <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required>
+      <div class="pw-wrap">
+        <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required>
+        <button class="pw-eye" type="button" data-action="toggle-pw" data-target="auth-password" data-i18n-aria="show_pw" aria-label="Show password" aria-pressed="false"><svg class="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
+      </div>
       <label id="terms-row" class="check-row" hidden>
         <input id="terms-check" type="checkbox">
         <span><span data-i18n="terms_accept">I will only track my own belongings, never a person without their consent.</span> <a href="privacy.html" target="_blank" data-i18n="terms_link">Terms &amp; privacy</a></span>
@@ -415,7 +418,10 @@
     <form id="newpw-form" class="modal-card form" novalidate>
       <h2 id="newpw-title" data-i18n="newpw_title">Choose a new password</h2>
       <label for="newpw-input" data-i18n="password">Password</label>
-      <input id="newpw-input" type="password" autocomplete="new-password" minlength="6" required>
+      <div class="pw-wrap">
+        <input id="newpw-input" type="password" autocomplete="new-password" minlength="6" required>
+        <button class="pw-eye" type="button" data-action="toggle-pw" data-target="newpw-input" data-i18n-aria="show_pw" aria-label="Show password" aria-pressed="false"><svg class="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
+      </div>
       <p id="newpw-error" class="form-error" role="alert"></p>
       <button class="btn btn-primary btn-lg" type="submit" data-i18n="save_changes">Save changes</button>
     </form>
