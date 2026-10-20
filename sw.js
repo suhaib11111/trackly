@@ -1,6 +1,6 @@
 // Trackly service worker: caches the app shell so it opens fast and works as an installed app.
 // Live data (Supabase, map tiles) always comes from the network.
-const CACHE = 'trackly-v6';
+const CACHE = 'trackly-v7';
 const SHELL = [
   './',
   './index.html',
@@ -59,5 +59,10 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(self.clients.openWindow(event.notification.data.url || './'));
+  // switch to Trackly if it's already open, otherwise open it
+  const url = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    const open = list.find((c) => c.url.startsWith(self.registration.scope));
+    return open ? open.focus() : self.clients.openWindow(url);
+  }));
 });

@@ -8,6 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
+  const APP_VERSION = '2026.10.20';
 
   // ---------- state ----------
   const state = {
@@ -75,7 +76,9 @@
   }
 
   function showView(id) {
-    $$('.view').forEach((v) => { v.hidden = v.id !== id; });
+    const go = () => $$('.view').forEach((v) => { v.hidden = v.id !== id; });
+    const cur = $$('.view').find((v) => !v.hidden);
+    if (document.startViewTransition && cur && cur.id !== id && cur.id !== 'view-loading' && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(go); else go();
     if (id === 'view-app' && map.m) setTimeout(() => map.m.invalidateSize(), 50);
   }
 
@@ -87,7 +90,9 @@
     if (/rate limit|over_email_send_rate_limit/i.test(msg)) return t('err_email_limit');
     if (/email not confirmed/i.test(msg)) return t('err_not_confirmed');
     if (msg.toLowerCase().includes('invalid login')) return t('err_login');
-    if (msg && msg.length < 140 && !msg.includes('fetch')) return msg;
+    if (/could not find the function|does not exist|PGRST20[0-9]|schema cache/i.test(msg) || (err && /^PGRST2/.test(err.code || ''))) return t('err_needs_update');
+    if (/failed to fetch|network|load failed/i.test(msg)) return t('err_offline');
+    if (msg && msg.length < 100 && !/[_(){}]|sql|postgres|jwt/i.test(msg)) return msg;
     return t('err_generic');
   }
 
@@ -129,12 +134,42 @@
     $$('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
     $$('[data-i18n-ph]').forEach((el) => { el.placeholder = t(el.dataset.i18nPh); });
     $$('[data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
-    $$('.lang-btn').forEach((el) => { el.textContent = dict._label; });
+    $$('.lang-btn').forEach((el) => { el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg><span></span>'; el.querySelector('span').textContent = dict._label; el.setAttribute('aria-label', t('language')); });
     $$('.lang-label').forEach((el) => { el.textContent = dict._label; });
+    if ($('#acc-lang')) $('#acc-lang').textContent = { en: 'English', ckb: 'کوردی', ar: 'العربية' }[state.lang];
     updateAuthButton();
     state.areaKey = null;
     if (state.tracker) { renderMapPanel(); renderZones(); if (state.tab === 'history') loadHistory(); }
     if (map.m) { renderPlacesBar(); renderPlaces(); renderAlerts(); }
+  }
+
+  function setLang(lang) {
+    if (!LANGS.includes(lang)) return;
+    state.lang = lang;
+    localStorage.setItem('trackly-lang', lang);
+    applyLang();
+  }
+  function openLangMenu() {
+    $$('#lang-menu [data-lang]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.lang === state.lang)));
+    $('#lang-menu').hidden = false;
+    const cur = $('#lang-menu [aria-checked="true"]'); if (cur) cur.focus();
+  }
+  function closeLangMenu() { $('#lang-menu').hidden = true; }
+
+  // ---------- install the app + updates ----------
+  let installEvent = null;
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvent = e; renderInstall(); });
+  window.addEventListener('appinstalled', () => { installEvent = null; renderInstall(); toast(t('installed')); });
+  function isInstalled() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
+  function renderInstall() { const b = $('#install-btn'); if (b) b.hidden = isInstalled(); }
+  async function installApp() {
+    if (installEvent) { installEvent.prompt(); await installEvent.userChoice.catch(() => {}); installEvent = null; renderInstall(); return; }
+    showView('view-setup');   // iPhone / no prompt: show the step-by-step guide
+  }
+  async function checkForUpdate() {
+    toast(t('checking'));
+    try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { /* offline */ }
+    setTimeout(() => location.reload(), 600);
   }
 
   function cycleLang() {
@@ -232,6 +267,7 @@
     unsubscribe();
     await sb.auth.signOut();
     state.user = null; state.trackers = []; state.tracker = null; state.recent = []; state.zones = [];
+    try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
     showView('view-auth');
   }
 
@@ -241,7 +277,15 @@
     state.user = data.session ? data.session.user : null;
     if (!state.user) { showView('view-auth'); return; }
     $('#account-email').textContent = state.user.email || '';
+    const cached = readCache();
+    if (cached && cached.trackers.length && localStorage.getItem('trackly-setup-done') && !sessionStorage.getItem('trackly-pending-join')) {
+      state.trackers = cached.trackers; fillTrackerSelect();
+      if ($('#view-app').hidden) openApp();
+    }
     await loadTrackers();
+    if (cached && state.trackers.length && !$('#view-app').hidden && state.trackers.some((x) => x.id === (state.tracker && state.tracker.id))) {
+      state.tracker = state.trackers.find((x) => x.id === state.tracker.id); $('#tracker-select').value = state.tracker.id; renderMapPanel(); return;
+    }
     if (sessionStorage.getItem('trackly-pending-join')) { await applyPendingJoin(); return; }
     if (!state.trackers.length) { renderSavedTrackers(); applyPendingPair(); showView('view-pair'); $('[data-action="pair-back"]').hidden = true; return; }
     if (!localStorage.getItem('trackly-setup-done')) { showView('view-setup'); return; }
@@ -249,10 +293,18 @@
   }
 
   async function loadTrackers() {
-    const { data, error } = await sb.from('trackers').select(CFG.fakeBackend ? '*' : 'id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted').order('created_at');
+    let { data, error } = await sb.from('trackers').select(CFG.fakeBackend ? '*' : 'id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted').order('created_at');
+    // older database (before update 003): ask only for the columns that exist there
+    if (error && !CFG.fakeBackend) ({ data, error } = await sb.from('trackers').select('id, device_code, owner_id, name, mode, color').order('created_at'));
+    if (error && !CFG.fakeBackend) ({ data, error } = await sb.from('trackers').select('id, device_code, owner_id, name, mode').order('created_at'));
     if (error) { toast(errorText(error)); state.trackers = []; return; }
     state.trackers = data || [];
+    fillTrackerSelect();
+    renderBags();
+  }
+  function fillTrackerSelect() {
     const sel = $('#tracker-select');
+    const cur = sel.value;
     sel.innerHTML = '';
     state.trackers.forEach((tr) => {
       const o = document.createElement('option');
@@ -260,7 +312,7 @@
       o.textContent = tr.name || tr.device_code;
       sel.appendChild(o);
     });
-    renderBags();
+    if (cur && state.trackers.some((x) => x.id === cur)) sel.value = cur;
   }
 
   // ---------- pairing ----------
@@ -576,6 +628,7 @@
   // ---------- open app & tracker ----------
   async function openApp() {
     showView('view-app');
+    if (!openApp.labelled) { openApp.labelled = true; setTimeout(showFabLabels, 900); }
     initMap();
     const saved = localStorage.getItem('trackly-tracker');
     const tr = state.trackers.find((x) => x.id === saved) || state.trackers[0];
@@ -591,14 +644,19 @@
     localStorage.setItem('trackly-tracker', id);
     state.followBag = true;
     state.areaKey = null;
+    const cached = readCache();
+    if (cached && cached.trackerId === id && cached.recent.length) { state.recent = cached.recent; state.zones = cached.zones || []; renderMapPanel(); renderZones(); }
+    else { state.recent = []; $('#panel-map').classList.add('loading'); }
 
     const [locs, zones] = await Promise.all([
       sb.from('locations').select('lat, lng, battery, created_at').eq('tracker_id', id).order('created_at', { ascending: false }).limit(60),
       sb.from('safe_zones').select('*').eq('tracker_id', id).order('created_at')
     ]);
     if (locs.error) toast(errorText(locs.error));
-    state.recent = locs.data || [];
-    state.zones = zones.data || [];
+    $('#panel-map').classList.remove('loading');
+    if (!locs.error) state.recent = locs.data || [];
+    if (!zones.error) state.zones = zones.data || [];
+    saveCache();
 
     state.channel = sb.channel('tracker-' + id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'locations', filter: 'tracker_id=eq.' + id }, (payload) => {
@@ -607,6 +665,7 @@
         if (state.recent.length > 200) state.recent.length = 200;
         checkAlerts(before, payload.new);
         renderMapPanel();
+        saveCacheSoon();
         renderFind();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trackers', filter: 'id=eq.' + id }, (payload) => {
@@ -808,7 +867,8 @@
     const start = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       btn.classList.add('holding');
-      timer = setTimeout(() => { stop(); openConfirm(); }, 2000);
+      if (navigator.vibrate) navigator.vibrate(15);
+      timer = setTimeout(() => { stop(); if (navigator.vibrate) navigator.vibrate(50); openConfirm(); }, 2000);
     };
     const stop = () => { clearTimeout(timer); timer = null; btn.classList.remove('holding'); };
     btn.addEventListener('pointerdown', start);
@@ -822,11 +882,12 @@
   function closeConfirm() { $('#confirm-lost').hidden = true; }
 
   async function setMode(mode) {
-    const { error } = await sb.rpc('set_tracker_mode', { p_tracker: state.tracker.id, p_mode: mode });
-    if (error) { toast(errorText(error)); return false; }
-    state.tracker.mode = mode;
+    const before = state.tracker.mode;
+    state.tracker.mode = mode;       // show it right away
     state.followBag = true;
     renderMapPanel();
+    const { error } = await sb.rpc('set_tracker_mode', { p_tracker: state.tracker.id, p_mode: mode });
+    if (error) { state.tracker.mode = before; renderMapPanel(); toast(errorText(error)); return false; }   // undo
     return true;
   }
 
@@ -843,6 +904,13 @@
 
   // ---------- tabs ----------
   function switchTab(tab) {
+    if (document.startViewTransition && state.tab !== tab && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.m) {
+      document.startViewTransition(() => doSwitchTab(tab));
+      return;
+    }
+    doSwitchTab(tab);
+  }
+  function doSwitchTab(tab) {
     state.tab = tab;
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
     $('#panel-map').hidden = tab !== 'map';
@@ -1070,10 +1138,12 @@
   }
 
   async function toggleZone(z) {
-    const { error } = await sb.from('safe_zones').update({ enabled: !z.enabled }).eq('id', z.id);
-    if (error) { toast(errorText(error)); return; }
-    z.enabled = !z.enabled;
+    z.enabled = !z.enabled;          // show it right away
     renderZones();
+    if (navigator.vibrate) navigator.vibrate(8);
+    const { error } = await sb.from('safe_zones').update({ enabled: z.enabled }).eq('id', z.id);
+    if (error) { z.enabled = !z.enabled; renderZones(); toast(errorText(error)); return; }   // undo
+    saveCache();
   }
 
   async function deleteZone(z, fromEditor) {
@@ -1108,6 +1178,7 @@
     $('#panel-zones').hidden = true;
     $('#panel-zone-edit').hidden = false;
     $('#sheet').classList.add('editing');
+    setSnap('half');
     $('#sheet').scrollTop = 0;
     $('.tabbar').hidden = true;
     $('#map-controls').hidden = true;
@@ -1359,7 +1430,7 @@
       const [lng, lat] = f.geometry.coordinates;
       const id = 'v' + (f.id != null ? f.id : p.name + lat.toFixed(5) + lng.toFixed(5));
       if (places.all.has(id)) continue;
-      const tags = { name: p.name, 'name:en': p.name_en || p['name:en'], 'name:ar': p['name:ar'], 'name:ckb': p['name:ckb'] || p['name:ku'], kind: p.subclass || p.class };
+      const tags = { name: p.name, 'name:en': p.name_en || p['name:en'], 'name:ar': p['name:ar'], 'name:ckb': p['name:ckb'] || p['name:ku'], kind: p.subclass || p.class, rank: p.rank };
       places.all.set(id, { id, lat, lng, tags, group: vectorGroup(p.class, p.subclass) });
       n++;
     }
@@ -1368,7 +1439,7 @@
 
   async function loadPlaces() {
     if (!places.on || !map.m || state.tab === 'history' || state.zoneEdit) return;
-    if (map.m.getZoom() < 15) { renderPlaces(); return; }
+    if (map.m.getZoom() < 14) { renderPlaces(); return; }
     const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
     if (gl) {
       // vector map: read places when its tiles have loaded (and again after each move)
@@ -1408,15 +1479,23 @@
     $('#places-bar').hidden = !places.on || state.tab !== 'map' || !!state.zoneEdit;
     if (!places.on || state.tab === 'history' || state.zoneEdit) return;
     const zoom = map.m.getZoom();
-    $('#places-hint').hidden = zoom >= 16 || state.tab !== 'map';
-    if (zoom < 16) return;
+    $('#places-hint').hidden = zoom >= 15 || state.tab !== 'map';
+    if (zoom < 15) return;
     map.m.getContainer().classList.toggle('show-place-names', zoom >= 17);
     const b = map.m.getBounds().pad(0.1);
-    const max = zoom >= 18 ? 300 : (zoom >= 17 ? 140 : 60);
+    // one place per little square of the screen (no piles), the most important ones first
+    const cell = zoom >= 18 ? 30 : (zoom >= 17 ? 40 : (zoom >= 16 ? 52 : 64));
+    const GROUP_ORDER = { shop: 2, food: 3, health: 1, money: 4, fuel: 4, worship: 3, edu: 3, hotel: 2, park: 2, other: 6 };
+    const list = [...places.all.values()].filter((p) => places.filter.has(p.group) && b.contains([p.lat, p.lng]))
+      .sort((a, c) => ((a.tags.rank ?? 30) + GROUP_ORDER[a.group] * 2) - ((c.tags.rank ?? 30) + GROUP_ORDER[c.group] * 2));
+    const used = new Set();
     let shown = 0;
-    for (const p of places.all.values()) {
-      if (shown >= max) break;
-      if (!places.filter.has(p.group) || !b.contains([p.lat, p.lng])) continue;
+    for (const p of list) {
+      if (shown >= 400) break;
+      const pt = map.m.latLngToContainerPoint([p.lat, p.lng]);
+      const key = Math.floor(pt.x / cell) + ':' + Math.floor(pt.y / cell);
+      if (used.has(key)) continue;
+      used.add(key);
       const g = PLACE_GROUPS[p.group];
       const m = L.marker([p.lat, p.lng], {
         keyboard: false, riseOnHover: true,
@@ -1455,7 +1534,7 @@
   function togglePlaces() {
     places.on = !places.on;
     localStorage.setItem('trackly-places', places.on ? '1' : '0');
-    if (places.on && map.m.getZoom() < 16) toast(t('places_zoom'));
+    if (places.on && map.m.getZoom() < 15) toast(t('places_zoom'));
     renderPlaces(); loadPlaces();
   }
 
@@ -1705,18 +1784,106 @@
   // =====================================================================
   // BOTTOM CARD — swipe down (or tap the handle) to see more map
   // =====================================================================
+  // Bottom card with 3 snap points (like Google Maps): small, medium, full.
+  // Drag the handle (it follows your finger), or tap it to switch small ↔ medium.
+  const SNAPS = ['peek', 'half', 'full'];
+  function setSnap(name) {
+    const sheet = $('#sheet');
+    sheet.style.maxHeight = '';
+    SNAPS.forEach((n) => sheet.classList.toggle('snap-' + n, n === name));
+    sheet.classList.toggle('collapsed', name === 'peek');
+    $('#sheet-handle').setAttribute('aria-expanded', String(name !== 'peek'));
+    state.snap = name;
+  }
   function setupSheetDrag() {
     const sheet = $('#sheet'), handle = $('#sheet-handle');
-    let y0 = null;
-    const toggle = (collapse) => { sheet.classList.toggle('collapsed', collapse); handle.setAttribute('aria-expanded', String(!collapse)); };
-    handle.addEventListener('click', () => toggle(!sheet.classList.contains('collapsed')));
-    handle.addEventListener('pointerdown', (e) => { y0 = e.clientY; });
-    window.addEventListener('pointerup', (e) => {
+    let y0 = null, h0 = 0, moved = false, t0 = 0;
+    setSnap('half');
+    handle.addEventListener('pointerdown', (e) => {
+      y0 = e.clientY; h0 = sheet.offsetHeight; moved = false; t0 = performance.now();
+      handle.setPointerCapture(e.pointerId);
+      sheet.classList.add('dragging');
+    });
+    handle.addEventListener('pointermove', (e) => {
       if (y0 === null) return;
-      const dy = e.clientY - y0; y0 = null;
-      if (dy > 30) toggle(true); else if (dy < -30) toggle(false);
+      const dy = e.clientY - y0;
+      if (Math.abs(dy) > 4) moved = true;
+      sheet.style.maxHeight = Math.max(120, Math.min(innerHeight * 0.9, h0 - dy)) + 'px';
+    });
+    const end = (e) => {
+      if (y0 === null) return;
+      sheet.classList.remove('dragging');
+      const dy = e.clientY - y0, speed = dy / Math.max(1, performance.now() - t0);
+      y0 = null;
+      if (!moved) { setSnap(state.snap === 'peek' ? 'half' : 'peek'); return; }   // a tap
+      const h = h0 - dy, vh = innerHeight;
+      // a quick flick goes one step; otherwise the nearest snap point
+      let snap;
+      if (speed > 0.6) snap = state.snap === 'full' ? 'half' : 'peek';
+      else if (speed < -0.6) snap = state.snap === 'peek' ? 'half' : 'full';
+      else snap = h < vh * 0.3 ? 'peek' : (h < vh * 0.68 ? 'half' : 'full');
+      setSnap(snap);
+      if (navigator.vibrate) navigator.vibrate(8);
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  // ----- pull down on History / Safe zones to refresh -----
+  function showFabLabels() {
+    const n = Number(localStorage.getItem('trackly-opens') || 0) + 1;
+    localStorage.setItem('trackly-opens', String(n));
+    if (n > 3) return;
+    const c = $('#map-controls');
+    c.classList.add('show-labels');
+    setTimeout(() => c.classList.remove('show-labels'), 6000);
+  }
+
+  function setupPullToRefresh() {
+    const sheet = $('#sheet'), ptr = $('#ptr');
+    let y0 = null, dy = 0;
+    sheet.addEventListener('touchstart', (e) => {
+      if (sheet.scrollTop > 0 || !(state.tab === 'history' || state.tab === 'zones') || state.zoneEdit) { y0 = null; return; }
+      y0 = e.touches[0].clientY; dy = 0;
+    }, { passive: true });
+    sheet.addEventListener('touchmove', (e) => {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy > 0) { ptr.style.height = Math.min(70, dy * 0.5) + 'px'; ptr.classList.toggle('ready', dy > 90); }
+    }, { passive: true });
+    sheet.addEventListener('touchend', async () => {
+      if (y0 === null) return;
+      const go = dy > 90;
+      y0 = null;
+      if (!go) { ptr.style.height = ''; ptr.classList.remove('ready'); return; }
+      ptr.classList.add('busy');
+      if (navigator.vibrate) navigator.vibrate(10);
+      if (state.tab === 'history') await loadHistory();
+      else if (state.tracker) {
+        const { data } = await sb.from('safe_zones').select('*').eq('tracker_id', state.tracker.id).order('created_at');
+        if (data) { state.zones = data; renderZones(); saveCache(); }
+      }
+      ptr.classList.remove('busy', 'ready'); ptr.style.height = '';
     });
   }
+
+  // ----- instant opening: the last bag, location and zones are kept on the phone -----
+  const CACHE_KEY = 'trackly-cache';
+  function saveCache() {
+    if (!state.user || !state.tracker) return;
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ user: state.user.id, trackers: state.trackers, trackerId: state.tracker.id,
+        recent: state.recent.slice(0, 60), zones: state.zones, at: Date.now(), real: !CFG.fakeBackend }));
+    } catch (e) { /* storage full */ }
+  }
+  function readCache() {
+    try {
+      const c = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      return c && state.user && c.user === state.user.id && c.real === !CFG.fakeBackend ? c : null;
+    } catch (e) { return null; }
+  }
+  let cacheTimer = null;
+  function saveCacheSoon() { clearTimeout(cacheTimer); cacheTimer = setTimeout(saveCache, 1500); }
 
   // =====================================================================
   // BEEP — ask the tracker to play its sound (the ESP32 checks for this)
@@ -2233,7 +2400,11 @@
       const el = e.target.closest('[data-action]');
       if (!el) return;
       const a = el.dataset.action;
-      if (a === 'lang') cycleLang();
+      if (a === 'lang') openLangMenu();
+      else if (a === 'pick-lang') { setLang(el.dataset.lang); closeLangMenu(); }
+      else if (a === 'close-lang') closeLangMenu();
+      else if (a === 'install') installApp();
+      else if (a === 'check-update') checkForUpdate();
       else if (a === 'logout') logout();
       else if (a === 'pair-back') openApp();
       else if (a === 'allow-notif') allowNotifications();
@@ -2262,7 +2433,7 @@
       else if (a === 'park') togglePark();
       else if (a === 'join-family') { const c = $('#join-code').value.trim(); if (c) joinFamily(c); }
       else if (a === 'close-search') closeSearch();
-      else if (a === 'confirm-lost') { closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
+      else if (a === 'confirm-lost') { if (navigator.vibrate) navigator.vibrate([80, 60, 80]); closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
       else if (a === 'cancel-lost') closeConfirm();
       else if (a === 'found') { if (await setMode('normal')) toast(t('toast_found')); }
       else if (a === 'share') shareLive(4);
@@ -2323,9 +2494,11 @@
 
     $('#zone-radius').addEventListener('input', (e) => setRadius(Number(e.target.value)));
     $('#newpw-form').addEventListener('submit', saveNewPassword);
+    $('#join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = e.target.value.trim(); if (c) joinFamily(c); } });
     $('#map-search').addEventListener('input', onMapSearch);
     $('#map-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
     setupSheetDrag();
+    setupPullToRefresh();
     $('#replay-range').addEventListener('input', (e) => { stopReplay(); setReplay(Number(e.target.value)); });
     $$('#zone-kinds .kind').forEach((b) => b.addEventListener('click', () => setKind(b.dataset.kind)));
     $('#zone-search').addEventListener('input', onZoneSearch);
@@ -2340,6 +2513,7 @@
       if (e.key !== 'Escape') return;
       if (!$('#confirm-lost').hidden) closeConfirm();
       if (!$('#find-view').hidden) closeFind();
+      if (!$('#lang-menu').hidden) closeLangMenu();
     });
 
     setupHoldButton();
@@ -2364,6 +2538,10 @@
       if (sessionStorage.getItem('trackly-pending-join')) applyPendingJoin();
       else if (applyPendingPair()) { $('[data-action="pair-back"]').hidden = !state.trackers.length; showView('view-pair'); }
     });
+    const net = () => { $('#offline-banner').hidden = navigator.onLine; };
+    window.addEventListener('online', () => { net(); if (state.tracker) selectTracker(state.tracker.id); });
+    window.addEventListener('offline', net);
+    net();
     window.addEventListener('error', (e) => reportError(e.error || e.message));
     window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
     $$('[data-kind-icon]').forEach((el) => { el.innerHTML = kindIcon(el.dataset.kindIcon); });
@@ -2378,6 +2556,8 @@
     map.m.on('move', syncEditCircle);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     $('#google-btn').hidden = !CFG.googleLogin;
+    renderInstall();
+    $('#app-version').textContent = APP_VERSION;
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
     countVisit();
     route().then(() => {

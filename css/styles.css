@@ -736,3 +736,95 @@ html[dir="rtl"] .scan-top { right: auto; left: 16px; }
 .pw-eye .i-eye-off, .pw-eye[aria-pressed="true"] .i-eye { display: none; }
 .pw-eye[aria-pressed="true"] .i-eye-off { display: block; }
 .pw-eye[aria-pressed="true"] { color: var(--accent-strong); }
+
+/* language button (globe + EN / کو / ع) and the language menu */
+.lang-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px; }
+.lang-btn svg { width: 18px; height: 18px; color: var(--accent-strong); }
+.pill-lang { height: 48px; border-radius: 24px; background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-sm); }
+.lang-card { gap: 10px; }
+.lang-opt {
+  display: flex; align-items: center; gap: 14px; min-height: 64px; padding: 0 16px; border-radius: 16px;
+  border: 1.5px solid var(--line); background: var(--card-2); color: var(--text); cursor: pointer; text-align: start; width: 100%;
+}
+.lang-opt > span:last-child { display: flex; flex-direction: column; }
+.lang-opt strong { font-size: 17px; }
+.lang-opt[lang="ckb"] strong, .lang-opt[lang="ar"] strong { font-family: var(--font-rtl); }
+.lang-flag { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--card); font-weight: 700; font-size: 14px; flex: none; }
+.lang-opt[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.lang-opt[aria-checked="true"] .lang-flag { background: var(--primary); color: var(--on-primary); }
+/* account rows */
+.acc-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--card-2); color: var(--text); cursor: pointer; font-size: 15px; font-weight: 500; text-align: start; }
+.acc-row span { flex: 1; }
+.acc-row strong { color: var(--accent-strong); font-weight: 600; }
+.acc-row svg { color: var(--accent-strong); }
+.version { margin-top: 4px; }
+.tiny-link { font-size: 11px; min-height: 32px; padding: 0 4px; }
+/* offline */
+.offline-banner {
+  position: absolute; z-index: 520; left: 16px; right: 16px; top: calc(74px + var(--safe-top));
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 16px;
+  background: var(--text); color: var(--bg); font-size: 13px; font-weight: 600; box-shadow: var(--shadow-sm);
+}
+.offline-banner svg { width: 18px; height: 18px; }
+.offline-banner:not([hidden]) ~ .places-bar { top: calc(126px + var(--safe-top)); }
+
+/* =====================================================================
+   App feel: snap sheet, skeletons, press effects, transitions, no bounce
+   ===================================================================== */
+html, body { overscroll-behavior: none; }
+button, a, input, select, .leaflet-container { touch-action: manipulation; }   /* no double-tap zoom on controls */
+.leaflet-container { touch-action: none; }                                    /* the map handles its own gestures */
+* { -webkit-touch-callout: none; }
+input, textarea { -webkit-touch-callout: default; -webkit-user-select: text; user-select: text; }
+
+/* gentle press effect */
+.fab:active, .quick-btn:active, .chip:active, .pchip:active, .tab:active, .kind:active, .seg:active, .acc-row:active, .lang-opt:active, .zone-item .info:active { transform: scale(0.96); }
+.fab, .quick-btn, .chip, .pchip, .tab, .kind, .seg, .acc-row, .lang-opt { transition: transform 0.12s ease, background 0.2s ease, border-color 0.2s ease; }
+
+/* sheet snap points (small / medium / full) */
+.sheet { transition: max-height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.sheet.dragging { transition: none; }
+.sheet.snap-peek { max-height: 190px; overflow: hidden; }
+.sheet.snap-half { max-height: 62vh; }
+.sheet.snap-full { max-height: 90vh; }
+.sheet.editing { max-height: 50vh; }
+.handle-btn { height: 28px; margin: -8px 0 -6px; }
+.handle-btn:active .handle { background: var(--text-2); width: 52px; }
+.handle { transition: width 0.2s ease, background 0.2s ease; }
+
+/* zone editor: Cancel / Save always visible */
+.editor-bar { position: sticky; bottom: 0; z-index: 2; background: var(--card); padding: 10px 0 calc(10px + var(--safe-bottom)); margin-top: 4px;
+  box-shadow: 0 -10px 16px -10px rgba(0, 0, 0, 0.25); }
+.sheet.editing { padding-bottom: 0; }
+
+/* loading skeletons instead of "—" */
+@keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+.loading #bag-name, .loading #bag-area, .loading .stat-value, .loading .stat-label, .loading #mode-chip {
+  color: transparent !important; border-radius: 8px; min-width: 60px; display: inline-block;
+  background: linear-gradient(90deg, var(--card-2) 0, var(--line) 50%, var(--card-2) 100%) 0 0 / 400px 100%; animation: shimmer 1.2s linear infinite;
+}
+.loading #bag-name { min-width: 160px; }
+.loading #bag-area { min-width: 200px; }
+
+/* pull to refresh */
+.ptr { height: 0; overflow: hidden; display: grid; place-items: center; transition: height 0.2s ease; flex: none; margin: 0 0 -14px; }
+.ptr-spin { width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--accent); transition: transform 0.2s ease; }
+.ptr.ready .ptr-spin { transform: rotate(180deg); border-top-color: var(--accent-strong); }
+.ptr.busy { height: 48px !important; }
+.ptr.busy .ptr-spin { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* labels next to the map buttons (first few uses) */
+.fab { position: relative; }
+.fab-label {
+  position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(6px); white-space: nowrap;
+  padding: 5px 10px; border-radius: 10px; background: var(--text); color: var(--bg); font-size: 12px; font-weight: 600;
+  opacity: 0; pointer-events: none; transition: opacity 0.25s ease, transform 0.25s ease;
+}
+html[dir="rtl"] .fab-label { right: auto; left: calc(100% + 10px); }
+.map-controls.show-labels .fab-label { opacity: 1; transform: translateY(-50%); }
+@media (hover: hover) { .fab:hover .fab-label { opacity: 1; transform: translateY(-50%); } }
+
+/* smooth page / tab changes */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
+.modal .modal-card { animation: slide-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }

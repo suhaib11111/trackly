@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    language: "Language", install_app: "Install Trackly on this phone", installed: "Trackly is installed.", version: "Version", check_update: "Check for update", checking: "Getting the latest version…", offline: "You’re offline. Showing the last known location.", err_offline: "No internet connection. Try again when you’re online.", err_needs_update: "This feature needs the latest database update (003) in Supabase.",
     show_pw: "Show password", hide_pw: "Hide password", err_email_limit: "Supabase can only send a few emails per hour. Wait about an hour, or turn off Confirm email in Supabase (Authentication → Sign In / Providers → Email).", err_not_confirmed: "Please confirm your email first (check your inbox), then log in.",
     push_title: "Phone notifications",
     push_on: "On: alerts come to this phone, even when Trackly is closed.",
@@ -206,6 +207,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    language: "زمان", install_app: "دامەزراندنی Trackly لەم مۆبایلە", installed: "Trackly دامەزرا.", version: "وەشان", check_update: "پشکنینی نوێکردنەوە", checking: "نوێترین وەشان وەردەگیرێت…", offline: "ئینتەرنێتت نییە. دوایین شوێنی زانراو پیشان دەدرێت.", err_offline: "ئینتەرنێت نییە. کاتێک هێڵت هەبوو دووبارە هەوڵ بدەوە.", err_needs_update: "ئەم تایبەتمەندییە پێویستی بە نوێترین نوێکردنەوەی داتابەیس (003) هەیە.",
     show_pw: "پیشاندانی وشەی نهێنی", hide_pw: "شاردنەوەی وشەی نهێنی", err_email_limit: "Supabase تەنها چەند ئیمەیڵێک لە کاتژمێرێکدا دەنێرێت. نزیکەی کاتژمێرێک چاوەڕێ بکە، یان Confirm email لە Supabase بکوژێنەوە.", err_not_confirmed: "تکایە سەرەتا ئیمەیڵەکەت پشتڕاست بکەرەوە، پاشان بچۆ ژوورەوە.",
     push_title: "ئاگادارکردنەوەی مۆبایل",
     push_on: "هەڵکراوە: ئاگادارکردنەوەکان دێنە ئەم مۆبایلە، تەنانەت کاتێک Trackly داخراوە.",
@@ -408,6 +410,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    language: "اللغة", install_app: "تثبيت Trackly على هذا الهاتف", installed: "تم تثبيت Trackly.", version: "الإصدار", check_update: "التحقق من التحديث", checking: "جارٍ جلب أحدث إصدار…", offline: "أنت غير متصل. يتم عرض آخر موقع معروف.", err_offline: "لا يوجد اتصال بالإنترنت. حاول مجدداً عند الاتصال.", err_needs_update: "هذه الميزة تحتاج إلى آخر تحديث لقاعدة البيانات (003).",
     show_pw: "إظهار كلمة المرور", hide_pw: "إخفاء كلمة المرور", err_email_limit: "يرسل Supabase عدداً قليلاً من الرسائل في الساعة. انتظر حوالي ساعة، أو أوقف Confirm email في Supabase.", err_not_confirmed: "يرجى تأكيد بريدك الإلكتروني أولاً، ثم تسجيل الدخول.",
     push_title: "إشعارات الهاتف",
     push_on: "مفعّلة: تصل التنبيهات إلى هذا الهاتف حتى عندما يكون Trackly مغلقاً.",
