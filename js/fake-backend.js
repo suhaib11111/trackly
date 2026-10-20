@@ -287,10 +287,12 @@
     },
     async getSession() { return { data: { session: db.session }, error: null }; },
     async resetPasswordForEmail() { await wait(400); return { data: {}, error: null }; },   // test mode: pretend the email was sent
-    async updateUser({ password }) {
+    async updateUser({ password, data }) {
       if (!db.session) return { data: null, error: { message: 'not signed in' } };
       const u = db.users.find((x) => x.id === db.session.user.id);
-      if (u && password) { u.pw = await hash(password); save(); }
+      if (u && password) u.pw = await hash(password);
+      if (u && data) { u.meta = Object.assign({}, u.meta, data); db.session.user.user_metadata = u.meta; }
+      save();
       return { data: { user: db.session.user }, error: null };
     },
     async signInWithOAuth() { return { data: null, error: { message: 'Google sign-in needs the real database' } }; },
@@ -300,7 +302,7 @@
     }
   };
   function signInAs(user) {
-    db.session = { access_token: 'fake-' + uid(), user: { id: user.id, email: user.email } };
+    db.session = { access_token: 'fake-' + uid(), user: { id: user.id, email: user.email, user_metadata: user.meta || {} } };
     save();
     authListeners.forEach((cb) => cb('SIGNED_IN', db.session));
     return { data: { user: db.session.user, session: db.session }, error: null };

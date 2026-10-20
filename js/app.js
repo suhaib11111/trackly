@@ -143,11 +143,46 @@
     if (map.m) { renderPlacesBar(); renderPlaces(); renderAlerts(); }
   }
 
+  const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
+    places: 'trackly-places', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+  function currentSettings() {
+    const out = {};
+    for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
+    return out;
+  }
+  let settingsTimer = null, settingsLoaded = false;
+  // save a moment after the last change (one request for several quick taps)
+  function syncSettings() {
+    if (!state.user || !settingsLoaded) return;
+    clearTimeout(settingsTimer);
+    settingsTimer = setTimeout(async () => {
+      const s = currentSettings();
+      const old = (state.user.user_metadata && state.user.user_metadata.settings) || {};
+      if (JSON.stringify(s) === JSON.stringify(old)) return;
+      const { data, error } = await sb.auth.updateUser({ data: { settings: s } });
+      if (!error && data && data.user) state.user = data.user;
+    }, 800);
+  }
+  // after login: the account's settings win over what this phone remembers
+  function loadSettings() {
+    const s = (state.user && state.user.user_metadata && state.user.user_metadata.settings) || null;
+    settingsLoaded = true;
+    if (!s) { syncSettings(); return; }               // first time: store this phone's settings in the account
+    for (const [k, key] of Object.entries(SETTING_KEYS)) if (s[k] != null) localStorage.setItem(key, s[k]);
+    if (s.theme) applyTheme(s.theme);
+    if (s.lang && s.lang !== state.lang && LANGS.includes(s.lang)) { state.lang = s.lang; applyLang(); }
+    if (s.mapStyle && s.mapStyle !== state.mapStyle && map.m) { state.mapStyle = s.mapStyle; setTiles(); }
+    if (s.showPath != null) state.showPath = s.showPath === '1';
+    if (s.places != null) places.on = s.places !== '0';
+    $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
+  }
+
   function setLang(lang) {
     if (!LANGS.includes(lang)) return;
     state.lang = lang;
     localStorage.setItem('trackly-lang', lang);
     applyLang();
+    syncSettings();
   }
   function openLangMenu() {
     $$('#lang-menu [data-lang]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.lang === state.lang)));
@@ -268,6 +303,7 @@
     await sb.auth.signOut();
     state.user = null; state.trackers = []; state.tracker = null; state.recent = []; state.zones = [];
     try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
+    settingsLoaded = false;
     showView('view-auth');
   }
 
@@ -277,6 +313,7 @@
     state.user = data.session ? data.session.user : null;
     if (!state.user) { showView('view-auth'); return; }
     $('#account-email').textContent = state.user.email || '';
+    loadSettings();
     const cached = readCache();
     if (cached && cached.trackers.length && localStorage.getItem('trackly-setup-done') && !sessionStorage.getItem('trackly-pending-join')) {
       state.trackers = cached.trackers; fillTrackerSelect();
@@ -355,6 +392,7 @@
 
   function finishSetup() {
     localStorage.setItem('trackly-setup-done', '1');
+    syncSettings();
     if (state.trackers.length) openApp(); else showView('view-pair');
   }
 
@@ -429,6 +467,7 @@
     localStorage.setItem('trackly-map-style', st);
     setTiles();
     $('#style-picker').hidden = true;
+    syncSettings();
   }
 
   function markerIcon(kind) {
@@ -616,6 +655,7 @@
   function togglePath() {
     state.showPath = !state.showPath;
     localStorage.setItem('trackly-show-path', state.showPath ? '1' : '0');
+    syncSettings();
     if (state.showPath) loadPath(); else drawPath();
     toast(state.showPath ? t('path_on') : t('path_off'));
   }
@@ -642,6 +682,7 @@
     state.tracker = state.trackers.find((x) => x.id === id) || null;
     if (!state.tracker) return;
     localStorage.setItem('trackly-tracker', id);
+    syncSettings();
     state.followBag = true;
     state.areaKey = null;
     const cached = readCache();
@@ -1534,6 +1575,7 @@
   function togglePlaces() {
     places.on = !places.on;
     localStorage.setItem('trackly-places', places.on ? '1' : '0');
+    syncSettings();
     if (places.on && map.m.getZoom() < 15) toast(t('places_zoom'));
     renderPlaces(); loadPlaces();
   }
@@ -2108,6 +2150,7 @@
     const th = THEMES.includes(name) ? name : 'gold';
     document.documentElement.dataset.theme = th;
     localStorage.setItem('trackly-theme', th);
+    syncSettings();
     $$('#theme-list [data-theme-pick]').forEach((b) => b.classList.toggle('on', b.dataset.themePick === th));
     const meta = document.querySelectorAll('meta[name="theme-color"]');
     meta.forEach((m) => { m.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(); });
@@ -2293,6 +2336,7 @@
   }
   function toggleLeftBehind() {
     localStorage.setItem('trackly-left-behind', leftBehindOn() ? '0' : '1');
+    syncSettings();
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
     if (leftBehindOn()) locateMe(false);
   }
@@ -2531,9 +2575,11 @@
   function start() {
     applyTheme(localStorage.getItem('trackly-theme') || 'gold');
     takeLinkAction();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open
     window.addEventListener('hashchange', () => {
       takeLinkAction();
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
       if (!state.user) return;
       if (sessionStorage.getItem('trackly-pending-join')) applyPendingJoin();
       else if (applyPendingPair()) { $('[data-action="pair-back"]').hidden = !state.trackers.length; showView('view-pair'); }
