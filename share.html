@@ -78,6 +78,7 @@
     const token = new URLSearchParams(location.search).get('t') || '';
     const dark = matchMedia('(prefers-color-scheme: dark)').matches;
     const m = L.map('map', { zoomControl: false }).setView([36.1911, 44.0092], 15);
+    try { if (window.maplibregl && maplibregl.getRTLTextPluginStatus() === 'unavailable') maplibregl.setRTLTextPlugin('https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', true).catch(() => {}); } catch (e) { /* older engine */ }
     const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
     (L.maplibreGL && webgl
       ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: '&copy; OpenFreeMap &copy; OpenStreetMap' })

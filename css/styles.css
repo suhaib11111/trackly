@@ -915,3 +915,6 @@ html[dir="rtl"] .fab-label { right: auto; left: calc(100% + 10px); }
 
 /* no text selection on controls */
 button, .tab, .fab, .chip, .pchip, .quick-btn, .seg, .handle-btn { -webkit-user-select: none; user-select: none; }
+
+/* the map draws its own place icons now; a little room so taps feel easy */
+.leaflet-container canvas { outline: none; }

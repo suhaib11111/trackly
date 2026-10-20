@@ -165,7 +165,7 @@
     updateAuthButton();
     state.areaKey = null;
     if (state.tracker) { renderMapPanel(); renderZones(); if (state.tab === 'history') loadHistory(); }
-    if (map.m) { renderPlacesBar(); renderPlaces(); renderAlerts(); }
+    if (map.m) { renderPlacesBar(); renderPlaces(); renderAlerts(); refreshMapLanguage(); }
   }
 
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
@@ -440,11 +440,13 @@
     map.m = L.map('map', { zoomControl: false, attributionControl: true, zoomSnap: 0.5, maxZoom: 20 }).setView(ERBIL, 14);
     L.control.scale({ imperial: false, position: 'bottomleft', maxWidth: 110 }).addTo(map.m);
     map.m.attributionControl.setPrefix(false);
+    // Arabic / Kurdish letters on the map need this add-on to join up correctly (loaded only when needed)
+    try { if (window.maplibregl && maplibregl.getRTLTextPluginStatus && maplibregl.getRTLTextPluginStatus() === 'unavailable') maplibregl.setRTLTextPlugin('https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', true).catch(() => {}); } catch (e) { /* older engine */ }
     setTiles();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { setTiles(); renderMapPanel(); });
     map.m.on('dragstart', () => { if (!state.zoneEdit) { state.followBag = false; updateCenterBtn(); } });
     // while adding a safe zone, a tap on the map moves the pin there
-    map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) placePinAt(e.latlng); });
+    map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) { placePinAt(e.latlng); return; } tapMapPlace(e.latlng); });
     map.zones = L.layerGroup().addTo(map.m);
     renderPlacesBar();
     let placesTimer = null;
@@ -488,8 +490,14 @@
       map.tiles = L.layerGroup(layers);
     } else if (L.maplibreGL && webglOk()) {
       raster = false;
-      const name = st === 'detailed' ? (dark ? 'fiord' : 'liberty') : (dark ? 'dark' : 'positron');
-      map.tiles = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + name, attribution: OFM_ATTR });
+      if (st === 'detailed') {
+        // start with the plain style, then swap in the tuned one as soon as it's built (a few ms after the first visit)
+        map.tiles = L.maplibreGL({ style: styleCache[(dark ? 'd' : 'l') + state.lang] || 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: OFM_ATTR });
+        const layer = map.tiles;
+        buildMapStyle(dark).then((s) => { if (map.tiles === layer && layer.getMaplibreMap()) layer.getMaplibreMap().setStyle(s); }).catch(() => {});
+      } else {
+        map.tiles = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'positron'), attribution: OFM_ATTR });
+      }
     } else {
       map.tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 20, maxNativeZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -500,7 +508,7 @@
     map.m.getContainer().classList.toggle('map-dark', dark && raster && st !== 'sat' && st !== 'hybrid');
     // white text on photos needs a darker card behind the floating buttons
     map.m.getContainer().classList.toggle('map-photo', st === 'sat' || st === 'hybrid');
-    map.m.getContainer().classList.toggle('map-navy', dark && !raster);
+    map.m.getContainer().classList.toggle('map-navy', dark && !raster && st !== 'detailed');
     $$('#style-picker [data-style]').forEach((b) => b.classList.toggle('active', b.dataset.style === st));
   }
 
@@ -1462,6 +1470,168 @@
   }
 
   // =====================================================================
+  // PROFESSIONAL MAP STYLE — OpenFreeMap "Liberty" (free, no key), tuned like Google Maps:
+  //  - every kind of place with its own icon (hospital, pharmacy, school, mosque, café, bank, fuel…)
+  //  - labels never overlap and fade in/out while zooming (done by the map engine)
+  //  - places appear sooner; hospitals, universities, malls and stadiums already from zoom 12
+  //  - place names coloured by type, map labels in the app's language
+  //  - dark mode: the same detailed map, recoloured to deep navy (with all places)
+  // =====================================================================
+  const POI_GROUPS = {
+    health: ['hospital', 'pharmacy', 'doctors', 'dentist', 'clinic', 'veterinary'],
+    food: ['restaurant', 'fast_food', 'cafe', 'bar', 'ice_cream', 'beer', 'pub', 'bakery'],
+    shop: ['shop', 'grocery', 'clothing_store', 'alcohol_shop', 'butcher', 'jewelry', 'mobile_phone', 'shoes', 'furniture', 'florist',
+      'gift', 'hardware', 'music', 'toys', 'electronics', 'supermarket', 'mall', 'department_store', 'laundry', 'car', 'bicycle'],
+    money: ['bank', 'atm', 'bureau_de_change'],
+    fuel: ['fuel', 'charging_station'],
+    worship: ['place_of_worship'],
+    edu: ['school', 'college', 'kindergarten', 'library', 'university'],
+    hotel: ['lodging'],
+    park: ['park', 'garden', 'playground', 'pitch', 'stadium', 'sports_centre', 'swimming', 'golf']
+  };
+  const POI_TEXT = {   // label colour per type (darker on the light map, lighter on the dark one)
+    light: { health: '#be185d', food: '#c2410c', shop: '#6d28d9', money: '#0369a1', fuel: '#475569', worship: '#4d7c0f', edu: '#a16207', hotel: '#4338ca', park: '#15803d', other: '#57534e' },
+    dark: { health: '#f9a8d4', food: '#fdba74', shop: '#c4b5fd', money: '#7dd3fc', fuel: '#cbd5e1', worship: '#bef264', edu: '#fde68a', hotel: '#a5b4fc', park: '#86efac', other: '#d6d3d1' }
+  };
+  const POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20', 'trackly-major'];
+  const poiBaseFilters = {};
+  let libertyBase = null;
+  const styleCache = {};
+
+  function poiColorExpr(dark) {
+    const c = POI_TEXT[dark ? 'dark' : 'light'];
+    const expr = ['match', ['get', 'class']];
+    for (const [g, classes] of Object.entries(POI_GROUPS)) expr.push(classes, c[g]);
+    expr.push(c.other);
+    return expr;
+  }
+  // map labels in the app's language (falls back to the local name)
+  function nameExpr() {
+    if (state.lang === 'ar') return ['coalesce', ['get', 'name:ar'], ['get', 'name']];
+    if (state.lang === 'ckb') return ['coalesce', ['get', 'name:ckb'], ['get', 'name:ku'], ['get', 'name']];
+    return ['coalesce', ['get', 'name:en'], ['get', 'name_en'], ['get', 'name:latin'], ['get', 'name']];
+  }
+
+  // ---- dark navy version: walk every colour in the style and recolour it ----
+  function parseColor(c) {
+    if (typeof c !== 'string') return null;
+    let m, r, g, b, a = 1;
+    if ((m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c))) {
+      let h = m[1]; if (h.length === 3) h = h.split('').map((x) => x + x).join('');
+      r = parseInt(h.slice(0, 2), 16); g = parseInt(h.slice(2, 4), 16); b = parseInt(h.slice(4, 6), 16);
+    } else if ((m = /^rgba?\(([^)]+)\)$/i.exec(c))) {
+      const p = m[1].split(',').map((x) => parseFloat(x)); [r, g, b] = p; if (p.length > 3) a = p[3];
+    } else if ((m = /^hsla?\(([^)]+)\)$/i.exec(c))) {
+      const p = m[1].split(',').map((x) => parseFloat(x));
+      return { h: p[0], s: p[1] / 100, l: p[2] / 100, a: p.length > 3 ? p[3] : 1 };
+    } else return null;
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    let h = 0, s = 0;
+    if (mx !== mn) {
+      const d = mx - mn; s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60;
+    }
+    return { h, s, l, a };
+  }
+  const hsla = (o) => 'hsla(' + Math.round(o.h) + ', ' + Math.round(o.s * 100) + '%, ' + Math.round(o.l * 100) + '%, ' + o.a + ')';
+  function darkColor(str, prop) {
+    const c = parseColor(str);
+    if (!c) return str;
+    const water = c.h >= 180 && c.h <= 250 && c.s > 0.2;
+    const neutral = c.s < 0.12;
+    let o;
+    if (prop === 'text-color') o = { h: neutral ? 215 : c.h, s: neutral ? 0.15 : c.s * 0.6, l: 0.93 - c.l * 0.5, a: c.a };
+    else if (prop === 'text-halo-color') o = { h: 222, s: 0.35, l: 0.09, a: c.a };
+    else if (prop === 'line-color') o = water ? { h: c.h, s: 0.4, l: 0.24, a: c.a } : { h: neutral ? 218 : c.h, s: neutral ? 0.2 : c.s * 0.55, l: 0.17 + 0.24 * c.l, a: c.a };
+    else if (water) o = { h: c.h, s: 0.4, l: 0.17, a: c.a };
+    else o = { h: neutral ? 222 : c.h, s: neutral ? 0.28 : c.s * 0.45, l: 0.075 + (1 - c.l) * 0.3, a: c.a };
+    return hsla(o);
+  }
+  function walkColors(v, fn) {
+    if (typeof v === 'string') return fn(v);
+    if (Array.isArray(v)) return v.map((x) => walkColors(x, fn));
+    if (v && typeof v === 'object') { const o = {}; for (const k in v) o[k] = walkColors(v[k], fn); return o; }
+    return v;
+  }
+  function darkify(style) {
+    style.layers.forEach((l) => {
+      if (l.type === 'raster') { l.paint = Object.assign({}, l.paint, { 'raster-opacity': 0.12 }); return; }
+      if (!l.paint) return;
+      for (const k of Object.keys(l.paint)) if (/color$/.test(k) && k !== 'icon-color') l.paint[k] = walkColors(l.paint[k], (s) => darkColor(s, k));
+    });
+  }
+
+  async function buildMapStyle(dark) {
+    const key = (dark ? 'd' : 'l') + state.lang;
+    if (styleCache[key]) return styleCache[key];
+    if (!libertyBase) libertyBase = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
+    const s = JSON.parse(JSON.stringify(libertyBase));
+    const name = nameExpr();
+    const minz = { poi_r1: 14, poi_r7: 15, poi_r20: 16 };
+    if (dark) darkify(s);   // recolour first, so the bright place-label colours below stay bright
+    s.layers.forEach((l) => {
+      const tf = l.layout && l.layout['text-field'];
+      if (tf && JSON.stringify(tf).includes('"name')) l.layout['text-field'] = name;
+      if (l['source-layer'] === 'poi' && minz[l.id] != null) {
+        l.minzoom = minz[l.id];
+        l.layout['text-font'] = ['Noto Sans Regular'];
+        l.layout['text-size'] = 11.5;
+        l.layout['icon-size'] = 1.05;
+        l.paint = Object.assign({}, l.paint, { 'text-color': poiColorExpr(dark), 'text-halo-width': 1.4, 'text-halo-blur': 0.3 });
+      }
+    });
+    // the important places, visible sooner and with priority over smaller ones (layers on top are placed first)
+    s.layers.push({
+      id: 'trackly-major', type: 'symbol', source: 'openmaptiles', 'source-layer': 'poi', minzoom: 12,
+      filter: ['all', ['match', ['geometry-type'], ['MultiPoint', 'Point'], true, false],
+        ['any', ['match', ['get', 'class'], ['hospital', 'college', 'stadium', 'museum', 'attraction'], true, false],
+          ['match', ['get', 'subclass'], ['mall', 'department_store', 'university', 'hospital'], true, false]]],
+      layout: { 'icon-image': ['get', 'class'], 'icon-size': 1.2, 'text-field': name, 'text-font': ['Noto Sans Bold'], 'text-size': 12,
+        'text-anchor': 'top', 'text-offset': [0, 0.75], 'text-max-width': 8, 'symbol-sort-key': ['get', 'rank'] },
+      paint: { 'text-color': poiColorExpr(dark), 'text-halo-color': dark ? '#0b1428' : '#ffffff', 'text-halo-width': 1.6 }
+    });
+    s.layers.forEach((l) => { if (POI_LAYERS.includes(l.id)) poiBaseFilters[l.id] = l.filter; });
+    styleCache[key] = s;
+    return s;
+  }
+
+  // category chips filter the map's own place icons
+  function applyPoiFilter(gl) {
+    try {
+      const all = places.filter.size >= Object.keys(PLACE_GROUPS).length - 1;
+      const classes = [].concat(...[...places.filter].map((g) => POI_GROUPS[g] || []));
+      for (const id of POI_LAYERS) {
+        if (!gl.getLayer(id)) continue;
+        const base = poiBaseFilters[id];
+        gl.setFilter(id, all || !classes.length ? base : ['all', base, ['match', ['get', 'class'], classes, true, false]]);
+      }
+    } catch (e) { /* style still loading */ }
+  }
+  function mapGl() { return map.tiles && map.tiles.getMaplibreMap ? map.tiles.getMaplibreMap() : null; }
+
+  // tap a place icon on the map → the place card
+  function tapMapPlace(latlng) {
+    const gl = mapGl();
+    if (!gl || !places.on) return false;
+    const pt = gl.project([latlng.lng, latlng.lat]);
+    let feats = [];
+    try { feats = gl.queryRenderedFeatures([[pt.x - 14, pt.y - 14], [pt.x + 14, pt.y + 14]], { layers: POI_LAYERS.filter((id) => gl.getLayer(id)) }); } catch (e) { return false; }
+    const f = feats.find((x) => x.properties && x.properties.name);
+    if (!f) return false;
+    const p = f.properties, [lng, lat] = f.geometry.coordinates;
+    showPlace({ id: 'tap', lat, lng, group: vectorGroup(p.class, p.subclass),
+      tags: { name: p.name, 'name:en': p['name:en'] || p.name_en, 'name:ar': p['name:ar'], 'name:ckb': p['name:ckb'] || p['name:ku'], kind: p.subclass || p.class } });
+    return true;
+  }
+  // new language → map labels in that language
+  async function refreshMapLanguage() {
+    const gl = mapGl();
+    if (!gl || state.mapStyle === 'sat' || state.mapStyle === 'hybrid') return;
+    gl.setStyle(await buildMapStyle(isDark()));
+  }
+
+  // =====================================================================
   // PLACES — shops, restaurants, pharmacies, banks… from OpenStreetMap (free).
   // Loaded for the part of the map you're looking at (zoom 15+), cached in ~1 km squares.
   // =====================================================================
@@ -1552,8 +1722,8 @@
   function setMapPoiLabels(gl) {
     try {
       // change only what differs: setting it fires 'styledata' again, so this must not loop
-      const want = places.on ? 'none' : 'visible';
-      (gl.getStyle().layers || []).filter((l) => l['source-layer'] === 'poi').forEach((l) => {
+      const want = places.on ? 'visible' : 'none';
+      (gl.getStyle().layers || []).filter((l) => l['source-layer'] === 'poi' && l.id !== 'poi_transit').forEach((l) => {
         if ((gl.getLayoutProperty(l.id, 'visibility') || 'visible') !== want) gl.setLayoutProperty(l.id, 'visibility', want);
       });
     } catch (e) { /* style still loading */ }
@@ -1624,7 +1794,9 @@
     $('#places-bar').hidden = !places.on || state.tab !== 'map' || !!state.zoneEdit;
     if (!places.on || state.tab === 'history' || state.zoneEdit) return;
     const zoom = map.m.getZoom();
-    $('#places-hint').hidden = zoom >= 15 || state.tab !== 'map';
+    const vector = !!mapGl() && state.mapStyle === 'detailed';
+    $('#places-hint').hidden = vector || zoom >= 15 || state.tab !== 'map';
+    if (vector) { applyPoiFilter(mapGl()); return; }
     if (zoom < 15) return;
     map.m.getContainer().classList.toggle('show-place-names', zoom >= 17);
     const b = map.m.getBounds().pad(0.1);
