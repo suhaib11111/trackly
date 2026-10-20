@@ -167,12 +167,14 @@ end;
 $$;
 
 -- family can also use lost mode and the beep
+-- (keeps the return type of the existing function: text = the new mode)
 create or replace function public.set_tracker_mode(p_tracker uuid, p_mode text)
-returns void language plpgsql security definer set search_path = '' as $$
+returns text language plpgsql security definer set search_path = '' as $$
 begin
   if p_mode not in ('normal', 'lost') then raise exception 'bad mode'; end if;
   if not public.can_see_tracker(p_tracker) then raise exception 'not your tracker'; end if;
   update public.trackers set mode = p_mode where id = p_tracker;
+  return p_mode;
 end;
 $$;
 create or replace function public.request_buzz(p_tracker uuid)
