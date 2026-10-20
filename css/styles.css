@@ -828,3 +828,23 @@ html[dir="rtl"] .fab-label { right: auto; left: calc(100% + 10px); }
 /* smooth page / tab changes */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
 .modal .modal-card { animation: slide-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* weekly summary */
+.week-card { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 18px; background: var(--card-2); }
+.week-card .label { margin: 0; }
+.week-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.week-grid div { display: flex; flex-direction: column; min-width: 0; }
+.week-grid strong { font-size: 17px; font-weight: 700; color: var(--accent-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.week-grid span { font-size: 11px; color: var(--text-2); }
+.week-top { margin: 0; padding-inline-start: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.week-top li { display: flex; justify-content: space-between; gap: 8px; }
+.week-top span { color: var(--text-2); white-space: nowrap; }
+/* night saver row inside a bag */
+.night-row { grid-column: 1 / -1; align-items: center; }
+.night-row div { display: flex; flex-direction: column; }
+.night-row strong { font-size: 13px; }
+/* two-step login */
+.mfa-setup { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.mfa-qr { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 14px; }
+.mfa-setup code { font-family: 'Sora', monospace; font-size: 12px; word-break: break-all; color: var(--text); }
+.code-input { text-align: center; font-size: 26px !important; letter-spacing: 8px; font-family: 'Sora', monospace; }

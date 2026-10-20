@@ -267,6 +267,17 @@
       <!-- History tab -->
       <div id="panel-history" class="panel" hidden>
         <h2 data-i18n="journey">Journey</h2>
+        <div id="week-card" class="week-card" hidden>
+          <span class="label" data-i18n="week_title">Last 7 days</span>
+          <div class="week-grid">
+            <div><strong id="week-km">—</strong><span data-i18n="week_km">travelled</span></div>
+            <div><strong id="week-days">—</strong><span data-i18n="week_days">days out</span></div>
+            <div><strong id="week-stops">—</strong><span data-i18n="week_stops">stops</span></div>
+            <div><strong id="week-away">—</strong><span data-i18n="week_away">away from home</span></div>
+          </div>
+          <span class="label" data-i18n="week_top">Most time spent at</span>
+          <ol id="week-top" class="week-top"></ol>
+        </div>
         <p id="history-summary" class="muted small"></p>
         <div id="replay" class="replay" hidden>
           <button id="replay-play" class="icon-btn" type="button" data-action="replay" data-i18n-aria="replay" aria-label="Replay">
@@ -351,6 +362,13 @@
         </section>
 
         <section class="acc-section">
+          <div class="row-between">
+            <div><h3 data-i18n="mfa_title">Two-step login</h3><p id="mfa-state" class="muted small"></p></div>
+            <button id="mfa-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="mfa" data-i18n-aria="mfa_title" aria-label="Two-step login"></button>
+          </div>
+        </section>
+
+        <section class="acc-section">
           <h3 data-i18n="join_title">Join a family bag</h3>
           <p class="muted small" data-i18n="join_sub">Got an invite code from family? Enter it to see their bag.</p>
           <div class="join-row">
@@ -391,7 +409,9 @@
           </div>
         </section>
         <a class="btn btn-secondary" href="landing.html" data-i18n="landing_link">Trackly website &amp; pre-order</a>
+        <a id="admin-link" class="btn btn-secondary" href="admin.html" hidden data-i18n="owner_page">Owner page</a>
         <a class="btn btn-ghost" href="privacy.html" data-i18n="terms_link">Terms &amp; privacy</a>
+        <button class="btn btn-ghost danger-text" type="button" data-action="delete-account" data-i18n="delete_acc">Delete my account</button>
         <p class="muted tiny center version"><span data-i18n="version">Version</span> <span id="app-version" dir="ltr"></span> · <button class="link-btn tiny-link" type="button" data-action="check-update" data-i18n="check_update">Check for update</button></p>
         <button class="btn btn-secondary" type="button" data-action="add-tracker" data-i18n="add_tracker">Pair another tracker</button>
         <button class="btn btn-secondary" type="button" data-action="show-setup" data-i18n="install_help">Add to home screen</button>
@@ -503,6 +523,23 @@
       <h2 data-i18n="report_points">Last 2 hours</h2>
       <table class="report-table"><thead><tr><th data-i18n="time">Time</th><th data-i18n="coords">Coordinates</th><th data-i18n="battery">Battery</th></tr></thead><tbody id="rp-points"></tbody></table>
     </article>
+  </div>
+
+  <!-- ============ TWO-STEP LOGIN ============ -->
+  <div id="mfa-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mfa-title">
+    <form id="mfa-form" class="modal-card form" novalidate>
+      <h2 id="mfa-title">Two-step login</h2>
+      <div id="mfa-setup" class="mfa-setup">
+        <p class="muted small" data-i18n="mfa_setup_sub">1. Install an authenticator app (Google Authenticator or Microsoft Authenticator). 2. Scan this code with it. 3. Type the 6 numbers it shows.</p>
+        <img id="mfa-qr" class="mfa-qr" alt="QR code">
+        <p class="muted tiny center"><span data-i18n="mfa_key">Or type this key:</span> <code id="mfa-secret" dir="ltr"></code></p>
+      </div>
+      <label for="mfa-code" data-i18n="mfa_code">6-digit code</label>
+      <input id="mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" dir="ltr" class="code-input">
+      <p id="mfa-error" class="form-error" role="alert"></p>
+      <button class="btn btn-primary btn-lg" type="submit" data-i18n="mfa_confirm">Confirm</button>
+      <button class="btn btn-secondary btn-lg" type="button" data-action="cancel-mfa" data-i18n="cancel">Cancel</button>
+    </form>
   </div>
 
   <!-- ============ LANGUAGE MENU ============ -->

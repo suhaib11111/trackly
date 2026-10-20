@@ -195,6 +195,23 @@
     const mineTr = (id) => db.trackers.find((t) => t.id === id && t.owner_id === me());
     const seeTr = (id) => db.trackers.find((t) => t.id === id && myTrackerIds().includes(t.id));
     if (name === 'save_push_subscription' || name === 'delete_push_subscription') return ok(null);
+    if (name === 'is_app_admin') return ok(false);
+    if (name === 'set_night_saver') {
+      const tr = mineTr(args.p_tracker); if (!tr) return fail('not your tracker');
+      tr.night_saver = !!args.p_on; save(); return ok(null);
+    }
+    if (name === 'delete_my_account') {
+      const id = me();
+      db.trackers.filter((t) => t.owner_id === id).forEach((t) => {
+        db.locations = db.locations.filter((l) => l.tracker_id !== t.id);
+        db.safe_zones = db.safe_zones.filter((z) => z.tracker_id !== t.id);
+      });
+      db.trackers = db.trackers.filter((t) => t.owner_id !== id);
+      db.members = db.members.filter((m) => m.user_id !== id);
+      db.users = db.users.filter((u) => u.id !== id);
+      db.session = null; save();
+      return ok(null);
+    }
     if (name === 'set_parked') {
       const tr = seeTr(args.p_tracker); if (!tr) return fail('not your tracker');
       const l = lastOf(tr.id);
@@ -294,6 +311,29 @@
       if (u && data) { u.meta = Object.assign({}, u.meta, data); db.session.user.user_metadata = u.meta; }
       save();
       return { data: { user: db.session.user }, error: null };
+    },
+    mfa: {
+      async listFactors() { const u = db.users.find((x) => db.session && x.id === db.session.user.id); return { data: { totp: (u && u.factors) || [] }, error: null }; },
+      async enroll() {
+        const u = db.users.find((x) => db.session && x.id === db.session.user.id); if (!u) return { data: null, error: { message: 'not signed in' } };
+        const f = { id: uid(), status: 'unverified', factor_type: 'totp' }; u.factors = (u.factors || []).concat(f); save();
+        const svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 21 21'><rect width='21' height='21' fill='white'/><path d='M1 1h7v7H1zM13 1h7v7h-7zM1 13h7v7H1zM10 10h2v2h-2zM14 14h3v3h-3z' fill='black'/></svg>";
+        return { data: { id: f.id, totp: { qr_code: 'data:image/svg+xml;utf8,' + encodeURIComponent(svg), secret: 'TESTMODE-ANY-6-DIGITS' } }, error: null };
+      },
+      async challenge() { return { data: { id: uid() }, error: null }; },
+      async verify({ factorId, code }) {
+        if (!/^\d{6}$/.test(code)) return { data: null, error: { message: 'Invalid TOTP code' } };
+        const u = db.users.find((x) => db.session && x.id === db.session.user.id);
+        const fct = u && (u.factors || []).find((x) => x.id === factorId); if (fct) fct.status = 'verified';
+        db.session.aal = 'aal2'; save();
+        return { data: {}, error: null };
+      },
+      async unenroll({ factorId }) { const u = db.users.find((x) => db.session && x.id === db.session.user.id); if (u) u.factors = (u.factors || []).filter((x) => x.id !== factorId); save(); return { data: {}, error: null }; },
+      async getAuthenticatorAssuranceLevel() {
+        const u = db.users.find((x) => db.session && x.id === db.session.user.id);
+        const on = !!(u && (u.factors || []).some((x) => x.status === 'verified'));
+        return { data: { currentLevel: (db.session && db.session.aal) || 'aal1', nextLevel: on ? 'aal2' : 'aal1' }, error: null };
+      }
     },
     async signInWithOAuth() { return { data: null, error: { message: 'Google sign-in needs the real database' } }; },
     onAuthStateChange(cb) {

@@ -241,6 +241,10 @@
         if (error) throw error;
         if (!data.session) { err.textContent = t('err_signup_check'); return; }
       }
+      if (await needsMfaCode()) {
+        const passed = await askMfaCode();
+        if (!passed) { await sb.auth.signOut(); return; }
+      }
       rememberLogin(email, password);
       await route();
     } catch (ex) {
@@ -312,6 +316,10 @@
     const { data } = await sb.auth.getSession();
     state.user = data.session ? data.session.user : null;
     if (!state.user) { showView('view-auth'); return; }
+    if (await needsMfaCode()) {
+      const passed = await askMfaCode();
+      if (!passed) { await sb.auth.signOut(); state.user = null; showView('view-auth'); return; }
+    }
     $('#account-email').textContent = state.user.email || '';
     loadSettings();
     const cached = readCache();
@@ -330,7 +338,8 @@
   }
 
   async function loadTrackers() {
-    let { data, error } = await sb.from('trackers').select(CFG.fakeBackend ? '*' : 'id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted').order('created_at');
+    let { data, error } = await sb.from('trackers').select(CFG.fakeBackend ? '*' : 'id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted, night_saver').order('created_at');
+    if (error && !CFG.fakeBackend) ({ data, error } = await sb.from('trackers').select('id, device_code, owner_id, name, mode, color, parked_at, parked_lat, parked_lng, parked_alerted').order('created_at'));
     // older database (before update 003): ask only for the columns that exist there
     if (error && !CFG.fakeBackend) ({ data, error } = await sb.from('trackers').select('id, device_code, owner_id, name, mode, color').order('created_at'));
     if (error && !CFG.fakeBackend) ({ data, error } = await sb.from('trackers').select('id, device_code, owner_id, name, mode').order('created_at'));
@@ -966,11 +975,11 @@
     stopReplay();
     $('#style-picker').hidden = true;
 
-    if (tab === 'history') loadHistory();
+    if (tab === 'history') { loadHistory(); loadWeekly(); }
     if (tab === 'zones') drawZones(true);
     if (tab === 'map') { state.followBag = true; drawZones(false); }
     $('#map-controls').hidden = tab === 'history' || tab === 'account';
-    if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); }
+    if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); }
     renderPlaces();
     renderMapPanel();
   }
@@ -2062,7 +2071,7 @@
     return stops;
   }
   function fmtDuration(mins) {
-    const h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    const total = Math.round(mins), h = Math.floor(total / 60), m = total % 60;   // never '60 min'
     if (h && m) return t('dur_hm', { h, m });
     if (h) return t('dur_h', { h });
     return t('dur_m', { m: Math.max(1, m) });
@@ -2120,6 +2129,16 @@
       fam.append(famTitle, members);
       const acts = document.createElement('div'); acts.className = 'bag-acts';
       if (mine) {
+        const night = document.createElement('div'); night.className = 'row-between night-row';
+        const nl = document.createElement('div');
+        const nt = document.createElement('strong'); nt.textContent = t('night_title');
+        const ns = document.createElement('span'); ns.className = 'muted small'; ns.textContent = t('night_sub');
+        nl.append(nt, ns);
+        const nsw = document.createElement('button'); nsw.type = 'button'; nsw.className = 'switch'; nsw.setAttribute('role', 'switch');
+        nsw.setAttribute('aria-checked', String(!!tr.night_saver)); nsw.setAttribute('aria-label', t('night_title'));
+        nsw.addEventListener('click', () => setNightSaver(tr, !tr.night_saver));
+        night.append(nl, nsw);
+        li.appendChild(night);
         const inv = document.createElement('button'); inv.type = 'button'; inv.className = 'btn btn-secondary'; inv.textContent = t('invite_family');
         inv.addEventListener('click', () => inviteFamily(tr));
         const un = document.createElement('button'); un.type = 'button'; un.className = 'btn btn-ghost danger-text'; un.textContent = t('unpair');
@@ -2127,6 +2146,7 @@
         acts.append(inv, un);
       }
       li.append(dot, name, code, colors, fam, acts);
+      const nr = li.querySelector('.night-row'); if (nr) li.insertBefore(nr, fam);
       renderMembers(tr, members);
       if (!mine) colors.hidden = true;
       ul.appendChild(li);
@@ -2438,6 +2458,169 @@
     sb.rpc('count_visit', { p_page: 'app' });
   }
 
+  // =====================================================================
+  // WEEKLY SUMMARY (History tab): distance, active days, top places, time away from home
+  // =====================================================================
+  let weekFor = null, weekAt = 0;
+  async function loadWeekly() {
+    if (!state.tracker || (weekFor === state.tracker.id && Date.now() - weekAt < 10 * 60e3)) return;
+    weekFor = state.tracker.id; weekAt = Date.now();
+    const since = new Date(Date.now() - 7 * 86400e3).toISOString();
+    const { data } = await sb.from('locations').select('lat, lng, created_at').eq('tracker_id', state.tracker.id)
+      .gte('created_at', since).order('created_at', { ascending: true }).limit(20000);
+    const pts = data || [];
+    const box = $('#week-card');
+    if (pts.length < 2) { box.hidden = true; return; }
+    // distance: skip GPS jitter (< 15 m) and impossible jumps (> 150 km/h)
+    let m = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const d = distanceM(pts[i - 1], pts[i]);
+      const s = (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000;
+      if (d >= 15 && s > 0 && d / s * 3.6 < 150) m += d;
+    }
+    const days = new Set(pts.map((p) => new Date(p.created_at).toDateString())).size;
+    // the same place visited several times counts once (time added up)
+    const stops = [];
+    for (const st of findStops(pts)) {
+      const same = stops.find((x) => distanceM(x, st) < 150);
+      if (same) same.mins += st.mins; else stops.push(Object.assign({}, st));
+    }
+    stops.sort((a, b) => b.mins - a.mins);
+    const home = state.zones.find((z) => z.kind === 'home');
+    let awayMin = 0;
+    if (home) for (let i = 1; i < pts.length; i++) {
+      if (distanceM(pts[i - 1], home) > home.radius_m) awayMin += Math.min(120, (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 60000);
+    }
+    $('#week-km').textContent = fmtDistance(m);
+    $('#week-days').textContent = String(days);
+    $('#week-stops').textContent = String(stops.length);
+    $('#week-away').textContent = home ? fmtDuration(awayMin) : '—';
+    const ul = $('#week-top');
+    ul.innerHTML = '';
+    for (const s of stops.slice(0, 3)) {
+      const li = document.createElement('li');
+      const name = document.createElement('strong'); name.textContent = '…';
+      const dur = document.createElement('span'); dur.textContent = fmtDuration(s.mins);
+      li.append(name, dur);
+      ul.appendChild(li);
+      stopName(s).then((n) => { name.textContent = n; });
+    }
+    box.hidden = false;
+  }
+
+  // =====================================================================
+  // NIGHT BATTERY SAVER (per bag, owner): the tracker sends less at night
+  // =====================================================================
+  async function setNightSaver(tr, on) {
+    const before = !!tr.night_saver;
+    tr.night_saver = on; renderBags();
+    const { error } = await sb.rpc('set_night_saver', { p_tracker: tr.id, p_on: on, p_start: '23:00', p_end: '07:00' });
+    if (error) { tr.night_saver = before; renderBags(); toast(errorText(error)); return; }
+    toast(on ? t('night_on') : t('night_off'));
+  }
+
+  // =====================================================================
+  // TWO-STEP LOGIN (authenticator app, e.g. Google Authenticator) — free, no email or SMS needed
+  // =====================================================================
+  const mfa = { factorId: null, pending: null };
+  async function mfaFactors() {
+    try { const { data } = await sb.auth.mfa.listFactors(); return (data && data.totp) || []; } catch (e) { return []; }
+  }
+  async function renderMfa() {
+    const sw = $('#mfa-switch');
+    if (!sw) return;
+    const f = (await mfaFactors()).filter((x) => x.status === 'verified');
+    sw.setAttribute('aria-checked', String(!!f.length));
+    $('#mfa-state').textContent = f.length ? t('mfa_on') : t('mfa_off');
+  }
+  async function toggleMfa() {
+    const verified = (await mfaFactors()).filter((x) => x.status === 'verified');
+    if (verified.length) {
+      if (!confirm(t('mfa_off_q'))) return;
+      for (const f of verified) await sb.auth.mfa.unenroll({ factorId: f.id });
+      toast(t('mfa_off')); renderMfa(); return;
+    }
+    // remove half-finished set-ups, then start a new one
+    for (const f of await mfaFactors()) if (f.status !== 'verified') await sb.auth.mfa.unenroll({ factorId: f.id });
+    const { data, error } = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Trackly' });
+    if (error) { toast(errorText(error)); return; }
+    mfa.factorId = data.id;
+    $('#mfa-qr').src = data.totp.qr_code;
+    $('#mfa-secret').textContent = data.totp.secret;
+    $('#mfa-code').value = '';
+    $('#mfa-error').textContent = '';
+    $('#mfa-title').textContent = t('mfa_setup_title');
+    $('#mfa-setup').hidden = false;
+    $('#mfa-view').hidden = false;
+    setTimeout(() => $('#mfa-code').focus(), 100);
+  }
+  // after a password login, ask for the 6-digit code if two-step login is on
+  async function needsMfaCode() {
+    try {
+      const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      return data && data.nextLevel === 'aal2' && data.currentLevel !== 'aal2';
+    } catch (e) { return false; }
+  }
+  async function askMfaCode() {
+    const f = (await mfaFactors()).find((x) => x.status === 'verified');
+    if (!f) return false;
+    mfa.factorId = f.id;
+    $('#mfa-setup').hidden = true;
+    $('#mfa-title').textContent = t('mfa_login_title');
+    $('#mfa-code').value = '';
+    $('#mfa-error').textContent = '';
+    $('#mfa-view').hidden = false;
+    setTimeout(() => $('#mfa-code').focus(), 100);
+    return new Promise((resolve) => { mfa.pending = resolve; });
+  }
+  async function submitMfa(e) {
+    e.preventDefault();
+    const code = $('#mfa-code').value.replace(/\D/g, '');
+    if (code.length !== 6) { $('#mfa-error').textContent = t('mfa_six'); return; }
+    const ch = await sb.auth.mfa.challenge({ factorId: mfa.factorId });
+    if (ch.error) { $('#mfa-error').textContent = errorText(ch.error); return; }
+    const v = await sb.auth.mfa.verify({ factorId: mfa.factorId, challengeId: ch.data.id, code });
+    if (v.error) { $('#mfa-error').textContent = t('mfa_wrong'); return; }
+    $('#mfa-view').hidden = true;
+    if (mfa.pending) { const r = mfa.pending; mfa.pending = null; r(true); }
+    else { toast(t('mfa_on')); renderMfa(); }
+  }
+  function cancelMfa() {
+    $('#mfa-view').hidden = true;
+    if (mfa.pending) { const r = mfa.pending; mfa.pending = null; r(false); }
+  }
+
+  // =====================================================================
+  // DELETE MY ACCOUNT (server function deletes only the signed-in account)
+  // =====================================================================
+  async function deleteAccount() {
+    if (!confirm(t('delete_acc_q'))) return;
+    const typed = prompt(t('delete_acc_type'));
+    if (!typed || typed.trim().toLowerCase() !== (state.user.email || '').toLowerCase()) { toast(t('delete_acc_cancel')); return; }
+    if (CFG.fakeBackend) {
+      const { error } = await sb.rpc('delete_my_account', {});
+      if (error) { toast(errorText(error)); return; }
+    } else {
+      const { data } = await sb.auth.getSession();
+      try {
+        const r = await fetch(CFG.supabaseUrl + '/functions/v1/delete-account', { method: 'POST',
+          headers: { Authorization: 'Bearer ' + data.session.access_token, apikey: CFG.supabaseKey, 'Content-Type': 'application/json' }, body: '{}' });
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      } catch (e) { toast(t('err_generic')); reportError(e); return; }
+    }
+    ['trackly-cache', 'trackly-saved-trackers', 'trackly-last-email', 'trackly-alerts', 'trackly-tracker', 'trackly-setup-done'].forEach((k) => localStorage.removeItem(k));
+    await sb.auth.signOut().catch(() => {});
+    toast(t('delete_acc_done'));
+    showView('view-auth');
+  }
+
+  // owner page link (only for you)
+  async function renderAdminLink() {
+    if (CFG.fakeBackend || !state.user) { $('#admin-link').hidden = true; return; }
+    const { data } = await sb.rpc('is_app_admin');
+    $('#admin-link').hidden = data !== true;
+  }
+
   // ---------- events ----------
   function bindEvents() {
     document.addEventListener('click', async (e) => {
@@ -2469,6 +2652,9 @@
         inp.focus();
       }
       else if (a === 'scan-qr') openScanner();
+      else if (a === 'mfa') toggleMfa();
+      else if (a === 'cancel-mfa') cancelMfa();
+      else if (a === 'delete-account') deleteAccount();
       else if (a === 'close-scan') closeScanner();
       else if (a === 'forgot') forgotPassword();
       else if (a === 'google') googleLogin();
@@ -2538,6 +2724,7 @@
 
     $('#zone-radius').addEventListener('input', (e) => setRadius(Number(e.target.value)));
     $('#newpw-form').addEventListener('submit', saveNewPassword);
+    $('#mfa-form').addEventListener('submit', submitMfa);
     $('#join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = e.target.value.trim(); if (c) joinFamily(c); } });
     $('#map-search').addEventListener('input', onMapSearch);
     $('#map-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });

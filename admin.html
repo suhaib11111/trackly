@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Trackly · Owner page</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* Owner page: pre-orders, misuse reports, trackers, visits, errors. Only works for accounts in app_admins. */
+    body { overflow: auto; }
+    a.btn { text-decoration: none; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: calc(16px + var(--safe-top)) 16px 40px; display: flex; flex-direction: column; gap: 16px; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .tile { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
+    .tile strong { display: block; font-size: 26px; color: var(--accent-strong); }
+    .tile span { font-size: 12px; color: var(--text-2); }
+    section.box { background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+    .box h2 { font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+    .box h2 .count { font-size: 12px; color: var(--text-2); font-weight: 500; }
+    .scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: start; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--text-2); font-weight: 600; font-size: 12px; white-space: nowrap; }
+    td a { color: var(--accent-strong); font-weight: 600; }
+    .empty { color: var(--text-2); font-size: 13px; }
+    .bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 6px; }
+    .bars div { flex: 1; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; position: relative; }
+    .bars div:hover::after { content: attr(data-tip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); font-size: 11px; padding: 3px 6px; border-radius: 6px; white-space: nowrap; }
+    .msg { padding: 24px; text-align: center; color: var(--text-2); }
+    .pill-ok { color: var(--accent-strong); font-weight: 600; } .pill-lost { color: var(--danger-text); font-weight: 600; }
+    code { font-size: 11px; color: var(--text-2); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <span class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/><circle cx="12" cy="14" r="2"/></svg></span><span class="logo">Trackly · Owner</span></span>
+      <div style="display:flex;gap:8px"><button id="refresh" class="btn btn-secondary" type="button">Refresh</button><a class="btn btn-primary" href="index.html">Open app</a></div>
+    </div>
+    <div id="msg" class="msg">Loading…</div>
+    <div id="dash" hidden style="display:flex;flex-direction:column;gap:16px">
+      <div id="tiles" class="tiles"></div>
+      <section class="box"><h2>Pre-orders <span id="pre-count" class="count"></span></h2><div class="scroll"><table><thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>City</th><th>Note</th></tr></thead><tbody id="pre"></tbody></table></div></section>
+      <section class="box"><h2>Misuse reports <span id="rep-count" class="count"></span></h2><div class="scroll"><table><thead><tr><th>Date</th><th>Tracker</th><th>Message</th><th>Contact</th></tr></thead><tbody id="rep"></tbody></table></div></section>
+      <section class="box"><h2>Trackers</h2><div class="scroll"><table><thead><tr><th>Code</th><th>Name</th><th>Owner</th><th>Mode</th><th>Last seen</th><th>Battery</th></tr></thead><tbody id="trk"></tbody></table></div></section>
+      <section class="box"><h2>Visits (last 30 days) <span id="vis-count" class="count"></span></h2><div id="bars" class="bars"></div></section>
+      <section class="box"><h2>App errors <span id="err-count" class="count"></span></h2><div class="scroll"><table><thead><tr><th>Date</th><th>Page</th><th>Message</th></tr></thead><tbody id="err"></tbody></table></div></section>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    const CFG = window.TRACKLY_CONFIG;
+    const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);   // same login as the app
+    const $ = (id) => document.getElementById(id);
+    const when = (iso) => iso ? new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+    // every value comes from the database (typed by customers), so it's always added as text, never as HTML
+    function row(tbody, cells) {
+      const tr = document.createElement('tr');
+      cells.forEach((c) => {
+        const td = document.createElement('td');
+        if (c && c.href) { const a = document.createElement('a'); a.href = c.href; a.textContent = c.text; a.target = '_blank'; a.rel = 'noopener'; td.appendChild(a); }
+        else if (c && c.cls) { const s = document.createElement('span'); s.className = c.cls; s.textContent = c.text; td.appendChild(s); }
+        else td.textContent = c == null ? '' : String(c);
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    function emptyRow(tbody, cols, text) { const tr = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = cols; td.className = 'empty'; td.textContent = text; tr.appendChild(td); tbody.appendChild(tr); }
+
+    async function load() {
+      $('msg').hidden = false; $('msg').textContent = 'Loading…';
+      const { data: s } = await sb.auth.getSession();
+      if (!s.session) { $('msg').textContent = 'Log in to Trackly first (with the owner account), then come back here.'; $('dash').hidden = true; return; }
+      const { data, error } = await sb.rpc('admin_dashboard');
+      if (error) {
+        $('dash').hidden = true;
+        $('msg').textContent = /admins only/.test(error.message) ? 'This page is only for the Trackly owner.' : 'Run the database update 004 in Supabase first.';
+        return;
+      }
+      $('msg').hidden = true; $('dash').hidden = false;
+      const c = data.counts;
+      $('tiles').innerHTML = '';
+      [['accounts', 'Accounts'], ['paired', 'Paired trackers'], ['trackers', 'All trackers'], ['locations_today', 'Locations (24 h)'], ['alerts_week', 'Alerts (7 days)'], ['phones_with_notifications', 'Notifications on']]
+        .forEach(([k, label]) => { const d = document.createElement('div'); d.className = 'tile'; const st = document.createElement('strong'); st.textContent = c[k] ?? 0; const sp = document.createElement('span'); sp.textContent = label; d.append(st, sp); $('tiles').appendChild(d); });
+
+      const pre = $('pre'); pre.innerHTML = '';
+      $('pre-count').textContent = data.preorders.length + ' total';
+      if (!data.preorders.length) emptyRow(pre, 5, 'No pre-orders yet.');
+      data.preorders.forEach((p) => {
+        const digits = String(p.phone || '').replace(/[^0-9+]/g, '');
+        const wa = digits.startsWith('0') ? '964' + digits.slice(1) : digits.replace('+', '');
+        row(pre, [when(p.created_at), p.name, { href: 'https://wa.me/' + wa, text: p.phone + ' (WhatsApp)' }, p.city, p.note]);
+      });
+
+      const rep = $('rep'); rep.innerHTML = '';
+      $('rep-count').textContent = data.reports.length + ' total';
+      if (!data.reports.length) emptyRow(rep, 4, 'No reports.');
+      data.reports.forEach((r) => row(rep, [when(r.at), r.about, r.message, r.contact]));
+
+      const trk = $('trk'); trk.innerHTML = '';
+      data.trackers.forEach((t) => row(trk, [t.device_code, t.name, t.owner || '— free —', { cls: t.mode === 'lost' ? 'pill-lost' : 'pill-ok', text: t.mode }, when(t.last_seen), t.battery == null ? '—' : t.battery + '%']));
+
+      // visits per day (all pages added up)
+      const byDay = {};
+      data.visits.forEach((v) => { byDay[v.day] = (byDay[v.day] || 0) + v.visits; });
+      const days = [];
+      for (let i = 29; i >= 0; i--) { const d = new Date(Date.now() - i * 86400e3).toISOString().slice(0, 10); days.push([d, byDay[d] || 0]); }
+      const max = Math.max(1, ...days.map((d) => d[1]));
+      $('bars').innerHTML = '';
+      days.forEach(([d, n]) => { const b = document.createElement('div'); b.style.height = (n / max * 100) + '%'; b.dataset.tip = d.slice(5) + ': ' + n; $('bars').appendChild(b); });
+      $('vis-count').textContent = days.reduce((a, d) => a + d[1], 0) + ' visits';
+
+      const err = $('err'); err.innerHTML = '';
+      $('err-count').textContent = data.errors.length + ' latest';
+      if (!data.errors.length) emptyRow(err, 3, 'No errors. 🎉');
+      data.errors.forEach((e) => row(err, [when(e.at), e.page, e.message]));
+    }
+    $('refresh').addEventListener('click', load);
+    load();
+  })();
+  </script>
+</body>
+</html>

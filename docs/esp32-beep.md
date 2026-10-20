@@ -40,3 +40,17 @@ if (checkBuzz()) beep();
 - In **lost mode** the tracker reports every 5 s, so the beep comes within ~5 s.
 - In **normal mode** it comes at the next report (1–1.5 min when moving, up to 1 h when still).
 - Lost mode stays silent on its own; the beep only plays when the owner asks for it.
+
+## Night battery saver (after update 004)
+`device_poll` also answers `"night": true` between the owner's night hours (default 23:00–07:00 Erbil time)
+when "Night battery saver" is on for that bag. It's never true while the bag is lost or parked.
+
+```cpp
+// make checkBuzz() keep its answer in a global (String lastPoll = res;), then:
+bool night = lastPoll.indexOf("\"night\": true") >= 0 || lastPoll.indexOf("\"night\":true") >= 0;
+if (night) {
+  // only an hourly check-in at night: sleep 60 minutes (motion can still wake it if you wired that up)
+  esp_sleep_enable_timer_wakeup(60ULL * 60ULL * 1000000ULL);
+  esp_deep_sleep_start();
+}
+```
