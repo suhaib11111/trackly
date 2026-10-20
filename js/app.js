@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.20';
+  const APP_VERSION = '2026.10.21';
 
   // ---------- state ----------
   const state = {
@@ -71,9 +71,34 @@
     const el = $('#toast');
     el.textContent = msg;
     el.hidden = false;
+    requestAnimationFrame(() => el.classList.add('in'));   // pop in
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => { el.hidden = true; }, 3200);
+    toast._t = setTimeout(() => { el.classList.remove('in'); setTimeout(() => { if (!el.classList.contains('in')) el.hidden = true; }, 220); }, 3200);
   }
+
+  // dialogs slide back down when they close
+  function closeModal(el) {
+    if (el.hidden || el.classList.contains('closing')) return;
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.hidden = true; return; }
+    el.classList.add('closing');
+    setTimeout(() => { el.hidden = true; el.classList.remove('closing'); }, 220);
+  }
+
+  // numbers that change (battery %) count to the new value and pop a little
+  function setStat(el, text) {
+    if (el.textContent === text) return;
+    const from = parseInt(el.textContent, 10), to = parseInt(text, 10);
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.classList.remove('bump'); void el.offsetWidth; if (!reduce && el.textContent !== '—' && el.textContent) el.classList.add('bump');
+    if (!reduce && /^\d+%$/.test(text) && Number.isFinite(from) && from !== to && Math.abs(from - to) < 60) {
+      const t0 = performance.now(), suffix = text.replace(/^\d+/, '');
+      const step = (now) => { const k = Math.min(1, (now - t0) / 450); el.textContent = Math.round(from + (to - from) * k) + suffix; if (k < 1) requestAnimationFrame(step); };
+      requestAnimationFrame(step);
+    } else el.textContent = text;
+  }
+
+  // height of what covers the bottom of the map: the sheet + the tab bar
+  function coverH() { return ($('#sheet') ? $('#sheet').offsetHeight : 0) + ($('#tabbar') && !$('#tabbar').hidden ? $('#tabbar').offsetHeight : 0); }
 
   function showView(id) {
     const go = () => $$('.view').forEach((v) => { v.hidden = v.id !== id; });
@@ -189,7 +214,7 @@
     $('#lang-menu').hidden = false;
     const cur = $('#lang-menu [aria-checked="true"]'); if (cur) cur.focus();
   }
-  function closeLangMenu() { $('#lang-menu').hidden = true; }
+  function closeLangMenu() { closeModal($('#lang-menu')); }
 
   // ---------- install the app + updates ----------
   let installEvent = null;
@@ -203,7 +228,11 @@
   }
   async function checkForUpdate() {
     toast(t('checking'));
-    try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { /* offline */ }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update();
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith('trackly-app')).map((k) => caches.delete(k)));
+    } catch (e) { /* offline */ }
     setTimeout(() => location.reload(), 600);
   }
 
@@ -422,8 +451,15 @@
     map.m.on('moveend zoomend', () => { clearTimeout(placesTimer); placesTimer = setTimeout(loadPlaces, 400); });
     // the floating map buttons sit just above the bottom card, whatever its height
     if (window.ResizeObserver) new ResizeObserver(() => {
-      document.documentElement.style.setProperty('--sheet-h', $('#sheet').offsetHeight + 'px');
+      document.documentElement.style.setProperty('--sheet-h', coverH() + 'px');
+      document.documentElement.style.setProperty('--tabbar-h', ($('#tabbar').hidden ? 0 : $('#tabbar').offsetHeight) + 'px');
+      moveTabInk();
     }).observe($('#sheet'));
+    // ...and when the tab bar shows / hides (zone editor)
+    if (window.ResizeObserver) new ResizeObserver(() => {
+      document.documentElement.style.setProperty('--tabbar-h', ($('#tabbar').hidden ? 0 : $('#tabbar').offsetHeight) + 'px');
+      document.documentElement.style.setProperty('--sheet-h', coverH() + 'px');
+    }).observe($('#tabbar'));
   }
 
   // Base map. Default: OpenFreeMap (free, no key, sharp vector map with light + dark styles).
@@ -464,6 +500,7 @@
     map.m.getContainer().classList.toggle('map-dark', dark && raster && st !== 'sat' && st !== 'hybrid');
     // white text on photos needs a darker card behind the floating buttons
     map.m.getContainer().classList.toggle('map-photo', st === 'sat' || st === 'hybrid');
+    map.m.getContainer().classList.toggle('map-navy', dark && !raster);
     $$('#style-picker [data-style]').forEach((b) => b.classList.toggle('active', b.dataset.style === st));
   }
 
@@ -502,14 +539,30 @@
     layer._glide = requestAnimationFrame(step);
   }
 
+  // the bag sits in the middle of the free part of the map (above the sheet), with a smooth flight
+  function flyToBag(ll, zoomIn) {
+    const z = zoomIn ? Math.max(map.m.getZoom(), 17) : Math.max(map.m.getZoom(), 16);
+    const lift = Math.min(Math.max(coverH() - 90, 0) / 2, 260);
+    const center = map.m.unproject(map.m.project(ll, z).add([0, lift]), z);
+    const far = map.m.getCenter().distanceTo(center) > 3000 || Math.abs(map.m.getZoom() - z) > 2;
+    if (far && !matchMedia('(prefers-reduced-motion: reduce)').matches) map.m.flyTo(center, z, { duration: 0.9 });
+    else map.m.setView(center, z, { animate: true, duration: 0.6 });
+  }
   function centerOnBag() {
     const loc = state.recent[0];
     if (!loc) { toast(t('no_location')); return; }
     state.followBag = true;
+    map.followKey = null;
     updateCenterBtn();
-    map.m.setView([loc.lat, loc.lng], Math.max(map.m.getZoom(), 17), { animate: true });
+    if (navigator.vibrate) navigator.vibrate(6);
+    flyToBag(L.latLng(loc.lat, loc.lng), true);
   }
-  function updateCenterBtn() { $('#btn-center') && $('#btn-center').classList.toggle('active', state.followBag); }
+  function updateCenterBtn() {
+    if ($('#btn-center')) $('#btn-center').classList.toggle('active', state.followBag);
+    // the round 'Show my bag' button appears once you drag the map away
+    const b = $('#back-to-bag');
+    if (b) b.hidden = state.followBag || state.tab !== 'map' || !!state.zoneEdit || !state.recent[0];
+  }
 
   // The phone's own location: blue dot, and "X km from you" on the card. forZone = move the zone pin there.
   // Live: after the first tap the blue dot keeps following you (watchPosition), and the
@@ -518,7 +571,7 @@
   function showMeAndBag() {
     state.followBag = false; updateCenterBtn();
     const loc = state.recent[0];
-    if (loc) map.m.fitBounds(L.latLngBounds([[loc.lat, loc.lng], [state.me.lat, state.me.lng]]), { paddingTopLeft: [40, 120], paddingBottomRight: [40, $('#sheet').offsetHeight + 40], maxZoom: 17 });
+    if (loc) map.m.fitBounds(L.latLngBounds([[loc.lat, loc.lng], [state.me.lat, state.me.lng]]), { paddingTopLeft: [40, 120], paddingBottomRight: [40, coverH() + 40], maxZoom: 17, duration: 0.8 });
     else map.m.setView([state.me.lat, state.me.lng], 16);
   }
   function locateMe(fly, forZone) {
@@ -677,6 +730,7 @@
   // ---------- open app & tracker ----------
   async function openApp() {
     showView('view-app');
+    requestAnimationFrame(moveTabInk);
     if (!openApp.labelled) { openApp.labelled = true; setTimeout(showFabLabels, 900); }
     initMap();
     const saved = localStorage.getItem('trackly-tracker');
@@ -803,7 +857,7 @@
       if (!lost) chip.textContent = t('no_signal');
     }
     const battery = typeof loc.battery === 'number' ? loc.battery : null;
-    $('#stat-battery').textContent = battery === null ? '—' : battery + '%';
+    setStat($('#stat-battery'), battery === null ? '—' : battery + '%');
     $('#stat-battery-sub').textContent = lost ? '' : batteryLeftText(battery, false);
     $('#stat-battery').parentElement.classList.toggle('low', battery !== null && battery <= CFG.lowBatteryPercent);
     $('#pill-dot').style.background = bagColor(tr);
@@ -874,11 +928,10 @@
     });
 
     // keep the bag in the free part of the map (above the bottom card)
-    if (state.followBag && state.tab === 'map' && !state.zoneEdit) {
-      const z = Math.max(map.m.getZoom(), 16);
-      const lift = Math.min(($('#sheet').offsetHeight - 60) / 2, 220);
-      const p = map.m.project(ll, z).add([0, lift]);
-      map.m.setView(map.m.unproject(p, z), z, { animate: true });
+    const followKey = loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5) + ':' + state.snap + ':' + state.tab;
+    if (state.followBag && state.tab === 'map' && !state.zoneEdit && map.followKey !== followKey) {
+      map.followKey = followKey;
+      flyToBag(ll, false);
     }
     updateCenterBtn();
 
@@ -929,7 +982,7 @@
   }
 
   function openConfirm() { $('#confirm-lost').hidden = false; $('[data-action="confirm-lost"]').focus(); }
-  function closeConfirm() { $('#confirm-lost').hidden = true; }
+  function closeConfirm() { closeModal($('#confirm-lost')); }
 
   async function setMode(mode) {
     const before = state.tracker.mode;
@@ -953,13 +1006,40 @@
   }
 
   // ---------- tabs ----------
+  const TAB_ORDER = ['map', 'history', 'zones', 'account'];
   function switchTab(tab) {
-    if (document.startViewTransition && state.tab !== tab && !matchMedia('(prefers-reduced-motion: reduce)').matches && map.m) {
-      document.startViewTransition(() => doSwitchTab(tab));
-      return;
-    }
+    const prev = state.tab;
+    const sheet = $('#sheet');
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const h0 = sheet.offsetHeight;
     doSwitchTab(tab);
+    moveTabInk();
+    if (prev === tab || reduce || !map.m) return;
+    if (navigator.vibrate) navigator.vibrate(5);
+    // slide the new panel in from the side it's on (mirrored in Arabic / Kurdish)
+    let dir = TAB_ORDER.indexOf(tab) > TAB_ORDER.indexOf(prev) ? 1 : -1;
+    if (document.documentElement.dir === 'rtl') dir = -dir;
+    const panel = $('#panel-' + tab);
+    if (panel) { panel.classList.remove('slide-fwd', 'slide-back'); void panel.offsetWidth; panel.classList.add(dir > 0 ? 'slide-fwd' : 'slide-back'); }
+    // the sheet grows / shrinks smoothly to the new content
+    const h1 = sheet.offsetHeight;
+    if (Math.abs(h1 - h0) > 4) {
+      sheet.style.height = h0 + 'px'; void sheet.offsetHeight;
+      sheet.classList.add('resizing'); sheet.style.height = h1 + 'px';
+      clearTimeout(switchTab._t);
+      switchTab._t = setTimeout(() => { sheet.classList.remove('resizing'); sheet.style.height = ''; }, 320);
+    }
   }
+  // the highlight behind the active tab glides to it (spring)
+  function moveTabInk() {
+    const ink = document.querySelector('.tab-ink'), active = document.querySelector('.tab.active');
+    if (!ink || !active) return;
+    const bar = $('#tabbar').getBoundingClientRect(), r = active.getBoundingClientRect();
+    if (!bar.width) return;
+    ink.style.width = r.width + 'px';
+    ink.style.transform = 'translateX(' + (r.left - bar.left) + 'px)';
+  }
+  window.addEventListener('resize', () => moveTabInk());
   function doSwitchTab(tab) {
     state.tab = tab;
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -1040,7 +1120,7 @@
     range.max = pts.length - 1; range.value = 0;
     setReplay(0);
     // leave room for the top bar and the bottom card, so the whole route stays visible
-    const sheetH = $('#sheet') ? $('#sheet').getBoundingClientRect().height : 0;
+    const sheetH = coverH();
     map.m.fitBounds(line.getBounds(), { paddingTopLeft: [32, 140], paddingBottomRight: [32, sheetH + 24], maxZoom: 16 });
 
     // timeline: first point, safe-zone changes, last point
@@ -1183,7 +1263,7 @@
     if (fit && state.zones.length) {
       const b = L.latLngBounds([]);
       state.zones.forEach((z) => b.extend(L.latLng(z.lat, z.lng).toBounds(z.radius_m * 2)));
-      map.m.fitBounds(b, { paddingTopLeft: [32, 120], paddingBottomRight: [32, $('#sheet').offsetHeight + 24], maxZoom: 16 });
+      map.m.flyToBounds(b, { paddingTopLeft: [32, 120], paddingBottomRight: [32, coverH() + 24], maxZoom: 16, duration: 0.8 });
     }
   }
 
@@ -1230,7 +1310,7 @@
     $('#sheet').classList.add('editing');
     setSnap('half');
     $('#sheet').scrollTop = 0;
-    $('.tabbar').hidden = true;
+    $('#tabbar').hidden = true;
     $('#map-controls').hidden = true;
     $('#zone-hint').hidden = false;
     $('#zone-pin').hidden = false;
@@ -1291,7 +1371,8 @@
     map.pinOffset = 0;
     $('#panel-zone-edit').hidden = true;
     $('#sheet').classList.remove('editing');
-    $('.tabbar').hidden = false;
+    $('#tabbar').hidden = false;
+    requestAnimationFrame(moveTabInk);
     $('#zone-hint').hidden = true;
     $('#zone-pin').hidden = true;
     $('#zone-search-bar').hidden = true;
@@ -1468,6 +1549,15 @@
     if (c === 'shop' || /_store$|_shop$/.test(c) || /^(grocery|bakery|mall|supermarket|clothes|convenience|electronics|mobile_phone|jewelry|shoes|butcher|greengrocer|department_store)$/.test(c + '|' + s) || c === 'grocery') return 'shop';
     return 'other';
   }
+  function setMapPoiLabels(gl) {
+    try {
+      // change only what differs: setting it fires 'styledata' again, so this must not loop
+      const want = places.on ? 'none' : 'visible';
+      (gl.getStyle().layers || []).filter((l) => l['source-layer'] === 'poi').forEach((l) => {
+        if ((gl.getLayoutProperty(l.id, 'visibility') || 'visible') !== want) gl.setLayoutProperty(l.id, 'visibility', want);
+      });
+    } catch (e) { /* style still loading */ }
+  }
   function harvestVectorPlaces() {
     const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
     if (!gl || !gl.isStyleLoaded || !gl.getSource('openmaptiles')) return 0;
@@ -1493,7 +1583,12 @@
     const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
     if (gl) {
       // vector map: read places when its tiles have loaded (and again after each move)
-      if (!gl._tracklyHooked) { gl._tracklyHooked = true; gl.on('idle', () => { if (harvestVectorPlaces()) { renderPlaces(); if (state.recent[0]) updateNear(state.recent[0]); } }); }
+      if (!gl._tracklyHooked) {
+        gl._tracklyHooked = true;
+        gl.on('idle', () => { if (harvestVectorPlaces()) { renderPlaces(); if (state.recent[0]) updateNear(state.recent[0]); } });
+        gl.on('styledata', () => setMapPoiLabels(gl));
+      }
+      setMapPoiLabels(gl);
       harvestVectorPlaces();
       renderPlaces();
       return;
@@ -1546,13 +1641,20 @@
       const key = Math.floor(pt.x / cell) + ':' + Math.floor(pt.y / cell);
       if (used.has(key)) continue;
       used.add(key);
+      // the name goes to the right of the dot: only if those squares are free too
+      let showName = zoom >= 17;
+      if (showName) {
+        const w = Math.min(160, placeName(p.tags).length * 6.5 + 10), row = Math.floor(pt.y / cell);
+        for (let x = pt.x + 16; x < pt.x + 16 + w; x += cell / 2) { if (used.has(Math.floor(x / cell) + ':' + row + 'n')) { showName = false; break; } }
+        if (showName) for (let x = pt.x + 16; x < pt.x + 16 + w; x += cell / 2) used.add(Math.floor(x / cell) + ':' + row + 'n');
+      }
       const g = PLACE_GROUPS[p.group];
       const m = L.marker([p.lat, p.lng], {
         keyboard: false, riseOnHover: true,
         icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
           html: '<div class="place" style="--c:' + g.color + '"><span class="place-dot">' + placeIcon(p.group) + '</span><span class="place-name"></span></div>' })
       });
-      m.on('add', function () { this.getElement().querySelector('.place-name').textContent = placeName(p.tags); });
+      m.on('add', function () { const n = this.getElement().querySelector('.place-name'); n.textContent = placeName(p.tags); n.classList.toggle('no-name', !showName); });
       m.on('click', () => showPlace(p));
       m.addTo(map.places);
       shown++;
@@ -1587,6 +1689,8 @@
     syncSettings();
     if (places.on && map.m.getZoom() < 15) toast(t('places_zoom'));
     renderPlaces(); loadPlaces();
+    const gl = map.tiles && map.tiles.getMaplibreMap && map.tiles.getMaplibreMap();
+    if (gl) setMapPoiLabels(gl);
   }
 
   // Tap a place: name, type, address, hours, phone + Directions / Safe zone here
@@ -1859,7 +1963,11 @@
       if (y0 === null) return;
       const dy = e.clientY - y0;
       if (Math.abs(dy) > 4) moved = true;
-      sheet.style.maxHeight = Math.max(120, Math.min(innerHeight * 0.9, h0 - dy)) + 'px';
+      let want = h0 - dy;
+      const lo = 110, hi = innerHeight * 0.9;
+      if (want > hi) want = hi + (want - hi) * 0.25;      // rubber band at the top
+      if (want < lo) want = lo - (lo - want) * 0.25;      // ...and at the bottom
+      sheet.style.maxHeight = want + 'px';
     });
     const end = (e) => {
       if (y0 === null) return;
@@ -2773,6 +2881,12 @@
     });
     const net = () => { $('#offline-banner').hidden = navigator.onLine; };
     window.addEventListener('online', () => { net(); if (state.tracker) selectTracker(state.tracker.id); });
+    let hiddenAt = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (state.tracker && !$('#view-app').hidden && Date.now() - hiddenAt > 20000) selectTracker(state.tracker.id);
+      else renderMapPanel();
+    });
     window.addEventListener('offline', net);
     net();
     window.addEventListener('error', (e) => reportError(e.error || e.message));

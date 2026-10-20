@@ -477,9 +477,9 @@ html[dir="rtl"] .switch[aria-checked="true"]::after { left: auto; right: 26px; }
 
 /* tab bar */
 .tabbar {
-  position: sticky; bottom: 0; background: var(--card);
+  position: absolute; z-index: 640; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; background: var(--card);
   display: flex; justify-content: space-around; border-top: 1px solid var(--line);
-  padding: 6px 0 calc(8px + var(--safe-bottom)); margin: 0 -20px; flex: none;
+  padding: 6px 0 calc(8px + var(--safe-bottom));
 }
 .tab { min-width: 64px; min-height: 50px; border: none; background: none; color: var(--text-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 500; cursor: pointer; position: relative; }
 .tab svg { width: 22px; height: 22px; }
@@ -848,3 +848,70 @@ html[dir="rtl"] .fab-label { right: auto; left: calc(100% + 10px); }
 .mfa-qr { width: 180px; height: 180px; background: #fff; padding: 8px; border-radius: 14px; }
 .mfa-setup code { font-family: 'Sora', monospace; font-size: 12px; word-break: break-all; color: var(--text); }
 .code-input { text-align: center; font-size: 26px !important; letter-spacing: 8px; font-family: 'Sora', monospace; }
+
+/* =====================================================================
+   Native feel (round 2): fixed tab bar with a gliding highlight, sliding panels,
+   smooth sheet height, pop-in toasts, dialogs that slide down, navy dark map
+   ===================================================================== */
+:root { --tabbar-h: 64px; }
+.sheet { bottom: var(--tabbar-h); border-radius: 26px 26px 0 0; padding-bottom: 12px; }
+.sheet.editing { bottom: 0; }
+.sheet.resizing { transition: height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), max-height 0.28s ease; overflow: hidden; }
+.toast { bottom: calc(var(--tabbar-h) + 16px); }
+
+/* tab highlight (spring) + bigger active icon */
+.tab-ink {
+  position: absolute; top: 6px; left: 0; height: 50px; border-radius: 16px; background: var(--accent-soft); pointer-events: none;
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.3s ease;
+}
+.tab { z-index: 1; }
+.tab svg { transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.tab.active svg { transform: scale(1.14); }
+.tab.active::before { display: none; }
+
+/* panels slide in from the side they're on */
+@keyframes slide-fwd { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes slide-back { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+.panel.slide-fwd { animation: slide-fwd 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.panel.slide-back { animation: slide-back 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* peek = just the bag name */
+.sheet.snap-peek { max-height: 132px; }
+.sheet.collapsed #bag-area, .sheet.collapsed #bag-near, .sheet.collapsed #bag-zone, .sheet.collapsed #parked-chip,
+.sheet.collapsed #nosignal-note, .sheet.collapsed #lost-label { display: none !important; }
+.sheet.collapsed #panel-map .muted.small { display: none; }
+
+/* "Show my bag" pill after dragging the map away */
+.back-pill {
+  position: absolute; z-index: 560; left: 50%; bottom: calc(var(--sheet-h) + 14px); transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px 0 12px; border-radius: 22px; border: none;
+  background: var(--primary); color: var(--on-primary); font-weight: 600; font-size: 14px; cursor: pointer; box-shadow: var(--shadow);
+  animation: pop-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.back-pill svg { width: 18px; height: 18px; stroke-width: 2.2; }
+@keyframes pop-in { from { transform: translateX(-50%) scale(0.8); opacity: 0; } }
+
+/* toasts pop in and out */
+.toast { opacity: 0; transform: translateX(-50%) translateY(10px) scale(0.96); transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.toast.in { opacity: 1; transform: translateX(-50%); }
+
+/* dialogs: slide up when opening (already), back down when closing */
+@keyframes slide-down { to { transform: translateY(40px); opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+.modal.closing { animation: fade-out 0.22s ease both; }
+.modal.closing .modal-card { animation: slide-down 0.22s ease both; }
+
+/* numbers pop when they change */
+@keyframes bump { 40% { transform: scale(1.12); } }
+.stat-value.bump { display: inline-block; animation: bump 0.35s ease; }
+
+/* pages fade in */
+.view:not([hidden]) { animation: fade-in 0.22s ease both; }
+#view-app:not([hidden]) { animation: none; }
+
+/* dark vector map tinted navy */
+.map-navy::after { content: ""; position: absolute; inset: 0; z-index: 250; pointer-events: none; background: #13284f; mix-blend-mode: color; opacity: 0.55; }
+.place-name.no-name { display: none !important; }
+
+/* no text selection on controls */
+button, .tab, .fab, .chip, .pchip, .quick-btn, .seg, .handle-btn { -webkit-user-select: none; user-select: none; }
