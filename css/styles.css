@@ -918,3 +918,9 @@ button, .tab, .fab, .chip, .pchip, .quick-btn, .seg, .handle-btn { -webkit-user-
 
 /* the map draws its own place icons now; a little room so taps feel easy */
 .leaflet-container canvas { outline: none; }
+
+/* speed camera: a little speed-limit sign */
+.cam-sign { width: 40px; height: 40px; border-radius: 50%; background: #fff; border: 3.5px solid #D93A3F; color: #111; display: grid; place-items: center;
+  font: 700 14px 'Sora', sans-serif; flex: none; box-shadow: var(--shadow-sm); }
+.cam-sign.small { width: 26px; height: 26px; border-width: 2.5px; font-size: 10px; }
+.cam-row { display: inline-flex; align-items: center; gap: 8px; }

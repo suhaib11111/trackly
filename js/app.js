@@ -169,7 +169,7 @@
   }
 
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
-    places: 'trackly-places', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    places: 'trackly-places', cams: 'trackly-cams', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -199,6 +199,7 @@
     if (s.mapStyle && s.mapStyle !== state.mapStyle && map.m) { state.mapStyle = s.mapStyle; setTiles(); }
     if (s.showPath != null) state.showPath = s.showPath === '1';
     if (s.places != null) places.on = s.places !== '0';
+    if (s.cams != null) { cams.on = s.cams !== '0'; if (map.m) renderCams(); }
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
   }
 
@@ -446,7 +447,7 @@
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { setTiles(); renderMapPanel(); });
     map.m.on('dragstart', () => { if (!state.zoneEdit) { state.followBag = false; updateCenterBtn(); } });
     // while adding a safe zone, a tap on the map moves the pin there
-    map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) { placePinAt(e.latlng); return; } tapMapPlace(e.latlng); });
+    map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) { placePinAt(e.latlng); return; } if (tapCam(e.latlng)) return; tapMapPlace(e.latlng); });
     map.zones = L.layerGroup().addTo(map.m);
     renderPlacesBar();
     let placesTimer = null;
@@ -504,6 +505,9 @@
       });
     }
     map.tiles.addTo(map.m);
+    const glNow = mapGl();
+    if (glNow) { glNow.on('styledata', () => ensureCamLayers(glNow)); glNow.on('idle', () => ensureCamLayers(glNow)); }
+    renderCams();
     // the CSS dark filter is only for the plain OpenStreetMap fallback
     map.m.getContainer().classList.toggle('map-dark', dark && raster && st !== 'sat' && st !== 'hybrid');
     // white text on photos needs a darker card behind the floating buttons
@@ -602,6 +606,7 @@
       if (!state.zoneEdit) renderMapPanel();
       renderFind();
       checkLeftBehind();
+      checkCamAhead(pos);
     };
     // a quick first answer (the phone's last known spot), then live updates as you move
     navigator.geolocation.getCurrentPosition(onFix, () => {}, { maximumAge: 60000, timeout: 8000 });
@@ -1467,6 +1472,101 @@
   // the edit circle follows the visual pin, not the map's real center
   function syncEditCircle() {
     if (state.zoneEdit && map.editCircle) map.editCircle.setLatLng(pinLatLng());
+  }
+
+  // =====================================================================
+  // SPEED CAMERAS — 880 cameras in Iraq + border areas (OpenStreetMap), saved in data/speed-cameras.json
+  // Drawn by the map engine like small speed-limit signs; tap one for its card.
+  // With "My location" on and driving, a warning comes ~400 m before a camera.
+  // =====================================================================
+  const cams = { list: null, on: localStorage.getItem('trackly-cams') !== '0', warned: {} };
+  async function loadCams() {
+    if (cams.list) return cams.list;
+    try { const r = await fetch('data/speed-cameras.json'); cams.list = (await r.json()).cameras || []; } catch (e) { cams.list = []; }
+    return cams.list;
+  }
+  function camGeoJSON() {
+    return { type: 'FeatureCollection', features: (cams.list || []).map((c, i) => ({ type: 'Feature', id: i,
+      geometry: { type: 'Point', coordinates: [c[1], c[0]] }, properties: { limit: c[2] ? String(c[2]) : '' } })) };
+  }
+  // vector map: a source + 2 layers (the sign, and the number on it); added again after every style change
+  function ensureCamLayers(gl) {
+    try {
+      if (!cams.list || !gl.getStyle()) return;   // (adding too early simply throws and is retried on the next "idle")
+      if (!gl.getSource('trackly-cams')) gl.addSource('trackly-cams', { type: 'geojson', data: camGeoJSON() });
+      const vis = cams.on ? 'visible' : 'none';
+      if (!gl.getLayer('trackly-cams-sign')) {
+        gl.addLayer({ id: 'trackly-cams-sign', type: 'circle', source: 'trackly-cams', minzoom: 8,
+          paint: { 'circle-color': '#ffffff', 'circle-stroke-color': '#D93A3F',
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3, 12, 7, 16, 11],
+            'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 8, 1.5, 12, 2.5, 16, 3.5] } });
+        gl.addLayer({ id: 'trackly-cams-limit', type: 'symbol', source: 'trackly-cams', minzoom: 11.5,
+          layout: { 'text-field': ['get', 'limit'], 'text-font': ['Noto Sans Bold'], 'text-size': ['interpolate', ['linear'], ['zoom'], 12, 9, 16, 12],
+            'text-allow-overlap': true, 'text-ignore-placement': true },
+          paint: { 'text-color': '#111111' } });
+      }
+      for (const id of ['trackly-cams-sign', 'trackly-cams-limit']) if ((gl.getLayoutProperty(id, 'visibility') || 'visible') !== vis) gl.setLayoutProperty(id, 'visibility', vis);
+    } catch (e) { /* style still loading */ }
+  }
+  // satellite views (no vector engine): the same signs drawn by Leaflet on a canvas (fast with many points)
+  function drawRasterCams() {
+    if (map.camsRaster) { map.m.removeLayer(map.camsRaster); map.camsRaster = null; }
+    if (!cams.on || !cams.list || mapGl() || state.tab === 'history') return;
+    const r = L.canvas({ padding: 0.3 }), g = L.layerGroup();
+    cams.list.forEach((c) => L.circleMarker([c[0], c[1]], { renderer: r, radius: 7, color: '#D93A3F', weight: 3, fillColor: '#fff', fillOpacity: 1 })
+      .on('click', () => showCam(c[0], c[1], c[2])).addTo(g));
+    map.camsRaster = g.addTo(map.m);
+  }
+  async function renderCams() {
+    await loadCams();
+    const gl = mapGl();
+    if (gl) { if (map.camsRaster) { map.m.removeLayer(map.camsRaster); map.camsRaster = null; } ensureCamLayers(gl); } else drawRasterCams();
+    if ($('#btn-cams')) $('#btn-cams').setAttribute('aria-checked', String(cams.on));
+  }
+  function toggleCams() {
+    cams.on = !cams.on;
+    localStorage.setItem('trackly-cams', cams.on ? '1' : '0');
+    syncSettings();
+    renderCams();
+    toast(cams.on ? t('cams_on') : t('cams_off'));
+  }
+  function showCam(lat, lng, limit) {
+    const box = document.createElement('div');
+    box.className = 'bi';
+    box.innerHTML = '<div class="pl-head"><span class="cam-sign"></span><div><strong class="bi-title"></strong><span class="pl-type"></span></div></div>';
+    box.querySelector('.cam-sign').textContent = limit || '!';
+    box.querySelector('.bi-title').textContent = t('cam_title');
+    box.querySelector('.pl-type').textContent = limit ? t('cam_limit', { n: limit }) : t('cam_no_limit');
+    L.popup({ className: 'bag-popup', maxWidth: 260, offset: [0, -6] }).setLatLng([lat, lng]).setContent(box).openOn(map.m);
+  }
+  function tapCam(latlng) {
+    const gl = mapGl();
+    if (!gl || !cams.on || !gl.getLayer('trackly-cams-sign')) return false;
+    const pt = gl.project([latlng.lng, latlng.lat]);
+    const f = gl.queryRenderedFeatures([[pt.x - 12, pt.y - 12], [pt.x + 12, pt.y + 12]], { layers: ['trackly-cams-sign'] })[0];
+    if (!f) return false;
+    const [lng, lat] = f.geometry.coordinates;
+    showCam(lat, lng, f.properties.limit);
+    return true;
+  }
+  // driving with "My location" on: warn once per camera, about 400 m before it, only while moving fast
+  function checkCamAhead(pos) {
+    if (!cams.on || !cams.list || !pos || !state.me) return;
+    const speed = pos.coords.speed;                      // metres per second (may be unknown)
+    if (speed !== null && speed !== undefined && speed < 8) return;   // under ~30 km/h: walking, not driving
+    if (speed === null || speed === undefined) return;
+    let best = null;
+    for (const c of cams.list) {
+      if (Math.abs(c[0] - state.me.lat) > 0.006 || Math.abs(c[1] - state.me.lng) > 0.008) continue;
+      const d = distanceM(state.me, { lat: c[0], lng: c[1] });
+      if (d < 400 && (!best || d < best.d)) best = { c, d };
+    }
+    if (!best) return;
+    const key = best.c[0] + ',' + best.c[1];
+    if (cams.warned[key] && Date.now() - cams.warned[key] < 5 * 60e3) return;
+    cams.warned[key] = Date.now();
+    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    toast(best.c[2] ? t('cam_ahead_limit', { d: fmtDistance(best.d), n: best.c[2] }) : t('cam_ahead', { d: fmtDistance(best.d) }));
   }
 
   // =====================================================================
@@ -2962,6 +3062,7 @@
       else if (a === 'map-style') toggleMapStyle();
       else if (a === 'pick-style') pickStyle(el.dataset.style);
       else if (a === 'toggle-path') togglePath();
+      else if (a === 'toggle-cams') toggleCams();
       else if (a === 'replay') toggleReplay();
       else if (a === 'directions') openDirections();
       else if (a === 'zone-me') locateMe(false, true);

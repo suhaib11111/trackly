@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    cams: "Speed cameras", cams_on: "Speed cameras shown.", cams_off: "Speed cameras hidden.", cam_title: "Speed camera", cam_limit: "Speed limit {n} km/h", cam_no_limit: "Speed limit not known", cam_ahead: "Speed camera ahead · {d}", cam_ahead_limit: "Speed camera ahead · {d} · limit {n} km/h",
     week_title: "Last 7 days",
     week_km: "travelled",
     week_days: "days out",
@@ -235,6 +236,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    cams: "کامێرای خێرایی", cams_on: "کامێراکانی خێرایی پیشان دەدرێن.", cams_off: "کامێراکانی خێرایی شاردرانەوە.", cam_title: "کامێرای خێرایی", cam_limit: "سنووری خێرایی {n} کم/ک", cam_no_limit: "سنووری خێرایی نەزانراوە", cam_ahead: "کامێرای خێرایی لە پێشتە · {d}", cam_ahead_limit: "کامێرای خێرایی لە پێشتە · {d} · سنوور {n} کم/ک",
     week_title: "٧ ڕۆژی ڕابردوو",
     week_km: "ڕۆیشتووە",
     week_days: "ڕۆژ لە دەرەوە",
@@ -466,6 +468,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    cams: "كاميرات السرعة", cams_on: "تم إظهار كاميرات السرعة.", cams_off: "تم إخفاء كاميرات السرعة.", cam_title: "كاميرا سرعة", cam_limit: "حد السرعة {n} كم/س", cam_no_limit: "حد السرعة غير معروف", cam_ahead: "كاميرا سرعة أمامك · {d}", cam_ahead_limit: "كاميرا سرعة أمامك · {d} · الحد {n} كم/س",
     week_title: "آخر 7 أيام",
     week_km: "مسافة",
     week_days: "أيام خروج",
