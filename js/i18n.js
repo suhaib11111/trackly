@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    act_today: "Today", steps: "steps", act_goal: "goal {n}", act_km: "walked", act_kcal: "kcal burned", act_min: "active", act_src_phone: "Steps counted by this phone.", act_src_bag: "Estimated from your bag’s walks.", act_src_wait: "Counting your steps while Trackly is open…", act_src_none: "Walk with your bag, or turn on “Count my steps” in Account.", act_resume: "Tap to keep counting steps", goal_done: "Daily step goal reached! Well done.", steps_no: "This phone can’t count steps here. Steps will be estimated from your bag’s walks.", steps_title: "Count my steps", steps_sub: "Uses this phone’s motion sensor while Trackly is open. Without it, steps are estimated from your bag’s walks.", weight: "Weight (kg)", goal: "Daily step goal", week_steps: "steps a day", week_drives: "drives", drive: "Drive", drive_sub: "{km} · {t} · top {s} km/h", cams_n: "{n} cameras", drives_n: "{n} drives", kmh: "km/h", trip_done: "Trip finished", trip_km: "distance", trip_time: "time", trip_avg: "average", trip_top: "top speed", trip_cams: "cameras passed", trip_over: "too fast at a camera", cam_sound: "Warning sound", cam_sound_on: "Warning sound on.", cam_sound_off: "Warning sound off.", ph_btn: "Open pharmacy", ph_searching: "Looking for an open pharmacy…", ph_none: "No pharmacy found nearby.", ph_open: "Open now", ph_maybe: "Opening hours not known", open_now: "open now", closed_now: "closed now", nav_title: "Directions with", battery_left: "Battery left", finder_title: "If someone finds my bag", finder_sub: "A page with your phone number. Print its QR code and put it inside the bag.", finder_phone: "Your phone number (WhatsApp)", finder_msg: "Message for the finder", finder_msg_ph: "Thank you! Please call me, there is a reward.", finder_qr: "Show QR", finder_share: "Share link", finder_print: "Print tag", finder_need_phone: "Add your phone number first.", finder_qr_sub: "Print it and put it inside your bag. Whoever scans it can call you, message you or send you where they are.",
     cams: "Speed cameras", cams_on: "Speed cameras shown.", cams_off: "Speed cameras hidden.", cam_title: "Speed camera", cam_limit: "Speed limit {n} km/h", cam_no_limit: "Speed limit not known", cam_ahead: "Speed camera ahead · {d}", cam_ahead_limit: "Speed camera ahead · {d} · limit {n} km/h",
     week_title: "Last 7 days",
     week_km: "travelled",
@@ -93,7 +94,7 @@ window.I18N = {
     pg_shop: "Shops",
     pg_health: "Health",
     pg_money: "Banks",
-    pg_fuel: "Fuel",
+    pg_fuel: "Fuel & EV",
     pg_worship: "Mosques",
     pg_edu: "Schools",
     pg_hotel: "Hotels",
@@ -236,6 +237,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    act_today: "ئەمڕۆ", steps: "هەنگاو", act_goal: "ئامانج {n}", act_km: "ڕۆیشتن", act_kcal: "کالۆری سووتاو", act_min: "چالاک", act_src_phone: "هەنگاوەکان بەم مۆبایلە ژمێردران.", act_src_bag: "بە پێی ڕۆیشتنەکانی جانتاکەت خەمڵێنراوە.", act_src_wait: "هەنگاوەکانت دەژمێردرێن کاتێک Trackly کراوەیە…", act_src_none: "لەگەڵ جانتاکەت بڕۆ، یان «هەنگاوەکانم بژمێرە» لە هەژمار دابگیرسێنە.", act_resume: "دابگرە بۆ بەردەوامبوونی ژماردنی هەنگاو", goal_done: "گەیشتیتە ئامانجی هەنگاوی ڕۆژانە! دەستخۆش.", steps_no: "ئەم مۆبایلە لێرە ناتوانێت هەنگاو بژمێرێت. هەنگاوەکان لە ڕۆیشتنەکانی جانتاکەتەوە دەخەمڵێنرێن.", steps_title: "هەنگاوەکانم بژمێرە", steps_sub: "هەستەوەری جووڵەی ئەم مۆبایلە بەکاردەهێنێت کاتێک Trackly کراوەیە. بەبێ ئەوە، هەنگاوەکان لە ڕۆیشتنەکانی جانتاکەتەوە دەخەمڵێنرێن.", weight: "کێش (کگم)", goal: "ئامانجی هەنگاوی ڕۆژانە", week_steps: "هەنگاو لە ڕۆژێکدا", week_drives: "گەشت بە ئۆتۆمبێل", drive: "لێخوڕین", drive_sub: "{km} · {t} · بەرزترین {s} کم/ک", cams_n: "{n} کامێرا", drives_n: "{n} گەشت", kmh: "کم/ک", trip_done: "گەشتەکە تەواو بوو", trip_km: "دووری", trip_time: "کات", trip_avg: "تێکڕا", trip_top: "بەرزترین خێرایی", trip_cams: "کامێرای تێپەڕیو", trip_over: "خێراتر لە سنوور لای کامێرا", cam_sound: "دەنگی ئاگادارکردنەوە", cam_sound_on: "دەنگی ئاگادارکردنەوە کرایەوە.", cam_sound_off: "دەنگی ئاگادارکردنەوە کوژایەوە.", ph_btn: "دەرمانخانەی کراوە", ph_searching: "بەدوای دەرمانخانەیەکی کراوەدا دەگەڕێین…", ph_none: "هیچ دەرمانخانەیەک لەم نزیکانە نەدۆزرایەوە.", ph_open: "ئێستا کراوەیە", ph_maybe: "کاتی کارکردنی نەزانراوە", open_now: "ئێستا کراوەیە", closed_now: "ئێستا داخراوە", nav_title: "ڕێگا بە", battery_left: "پاتری ماوە", finder_title: "ئەگەر کەسێک جانتاکەمی دۆزییەوە", finder_sub: "لاپەڕەیەک بە ژمارەی مۆبایلەکەت. QR ەکەی چاپ بکە و بیخەرە ناو جانتاکە.", finder_phone: "ژمارەی مۆبایلەکەت (WhatsApp)", finder_msg: "نامە بۆ دۆزەرەوە", finder_msg_ph: "سوپاس! تکایە پەیوەندیم پێوە بکە، خەڵاتی هەیە.", finder_qr: "QR پیشان بدە", finder_share: "ناردنی بەستەر", finder_print: "چاپکردن", finder_need_phone: "سەرەتا ژمارەی مۆبایلەکەت بنووسە.", finder_qr_sub: "چاپی بکە و بیخەرە ناو جانتاکەت. هەرکەسێک سکانی بکات دەتوانێت پەیوەندیت پێوە بکات یان شوێنەکەی بۆت بنێرێت.",
     cams: "کامێرای خێرایی", cams_on: "کامێراکانی خێرایی پیشان دەدرێن.", cams_off: "کامێراکانی خێرایی شاردرانەوە.", cam_title: "کامێرای خێرایی", cam_limit: "سنووری خێرایی {n} کم/ک", cam_no_limit: "سنووری خێرایی نەزانراوە", cam_ahead: "کامێرای خێرایی لە پێشتە · {d}", cam_ahead_limit: "کامێرای خێرایی لە پێشتە · {d} · سنوور {n} کم/ک",
     week_title: "٧ ڕۆژی ڕابردوو",
     week_km: "ڕۆیشتووە",
@@ -327,7 +329,7 @@ window.I18N = {
     pg_shop: "دوکان",
     pg_health: "تەندروستی",
     pg_money: "بانک",
-    pg_fuel: "بەنزین",
+    pg_fuel: "بەنزین و شەحن",
     pg_worship: "مزگەوت",
     pg_edu: "خوێندنگە",
     pg_hotel: "هوتێل",
@@ -468,6 +470,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    act_today: "اليوم", steps: "خطوة", act_goal: "الهدف {n}", act_km: "مشي", act_kcal: "سعرة محروقة", act_min: "نشاط", act_src_phone: "الخطوات محسوبة بهذا الهاتف.", act_src_bag: "تقدير من مشي حقيبتك.", act_src_wait: "نحسب خطواتك ما دام Trackly مفتوحاً…", act_src_none: "امشِ مع حقيبتك، أو فعّل «احسب خطواتي» في الحساب.", act_resume: "اضغط لمتابعة حساب الخطوات", goal_done: "وصلت إلى هدف الخطوات اليومي! أحسنت.", steps_no: "لا يستطيع هذا الهاتف حساب الخطوات هنا. سيتم تقديرها من مشي حقيبتك.", steps_title: "احسب خطواتي", steps_sub: "يستخدم مستشعر الحركة في هذا الهاتف ما دام Trackly مفتوحاً. بدونه تُقدَّر الخطوات من مشي حقيبتك.", weight: "الوزن (كغ)", goal: "هدف الخطوات اليومي", week_steps: "خطوة يومياً", week_drives: "رحلات بالسيارة", drive: "قيادة", drive_sub: "{km} · {t} · أعلى سرعة {s} كم/س", cams_n: "{n} كاميرات", drives_n: "{n} رحلات", kmh: "كم/س", trip_done: "انتهت الرحلة", trip_km: "المسافة", trip_time: "الوقت", trip_avg: "المعدل", trip_top: "أعلى سرعة", trip_cams: "كاميرات مررت بها", trip_over: "سرعة زائدة عند كاميرا", cam_sound: "صوت التنبيه", cam_sound_on: "تم تشغيل صوت التنبيه.", cam_sound_off: "تم إيقاف صوت التنبيه.", ph_btn: "صيدلية مفتوحة", ph_searching: "نبحث عن صيدلية مفتوحة…", ph_none: "لم نجد صيدلية قريبة.", ph_open: "مفتوحة الآن", ph_maybe: "ساعات العمل غير معروفة", open_now: "مفتوح الآن", closed_now: "مغلق الآن", nav_title: "الاتجاهات عبر", battery_left: "البطارية المتبقية", finder_title: "إذا وجد أحدٌ حقيبتي", finder_sub: "صفحة برقم هاتفك. اطبع رمز QR وضعه داخل الحقيبة.", finder_phone: "رقم هاتفك (واتساب)", finder_msg: "رسالة لمن يجدها", finder_msg_ph: "شكراً! اتصل بي من فضلك، هناك مكافأة.", finder_qr: "أظهر QR", finder_share: "مشاركة الرابط", finder_print: "طباعة", finder_need_phone: "أضف رقم هاتفك أولاً.", finder_qr_sub: "اطبعه وضعه داخل حقيبتك. من يمسحه يستطيع الاتصال بك أو مراسلتك أو إرسال موقعه إليك.",
     cams: "كاميرات السرعة", cams_on: "تم إظهار كاميرات السرعة.", cams_off: "تم إخفاء كاميرات السرعة.", cam_title: "كاميرا سرعة", cam_limit: "حد السرعة {n} كم/س", cam_no_limit: "حد السرعة غير معروف", cam_ahead: "كاميرا سرعة أمامك · {d}", cam_ahead_limit: "كاميرا سرعة أمامك · {d} · الحد {n} كم/س",
     week_title: "آخر 7 أيام",
     week_km: "مسافة",
@@ -559,7 +562,7 @@ window.I18N = {
     pg_shop: "متاجر",
     pg_health: "صحة",
     pg_money: "بنوك",
-    pg_fuel: "وقود",
+    pg_fuel: "وقود وشحن",
     pg_worship: "مساجد",
     pg_edu: "مدارس",
     pg_hotel: "فنادق",

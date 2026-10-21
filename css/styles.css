@@ -924,3 +924,74 @@ button, .tab, .fab, .chip, .pchip, .quick-btn, .seg, .handle-btn { -webkit-user-
   font: 700 14px 'Sora', sans-serif; flex: none; box-shadow: var(--shadow-sm); }
 .cam-sign.small { width: 26px; height: 26px; border-width: 2.5px; font-size: 10px; }
 .cam-row { display: inline-flex; align-items: center; gap: 8px; }
+
+/* ===== Activity: steps ring, stats and the week's bars ===== */
+.act-card { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 20px; background: var(--card-2); }
+.act-top { display: flex; align-items: center; gap: 16px; }
+.act-ring { position: relative; width: 118px; height: 118px; flex: none; }
+.act-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.act-ring circle { fill: none; stroke-width: 11; }
+.act-ring .ring-bg { stroke: var(--line); }
+.act-ring .ring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset 0.8s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.act-card.done .ring-fg { stroke: #22C55E; }
+.act-ring-txt { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.15; }
+.act-ring-txt strong { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.act-ring-txt span { font-size: 12px; color: var(--text-2); }
+.act-ring-txt em { font-style: normal; font-size: 10px; color: var(--text-2); opacity: 0.8; }
+.act-stats { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
+.act-stats .label { margin: 0; }
+.act-stats div { display: flex; align-items: baseline; gap: 6px; }
+.act-stats strong { font-size: 18px; font-weight: 700; color: var(--accent-strong); white-space: nowrap; }
+.act-stats span { font-size: 12px; color: var(--text-2); }
+.act-week { position: relative; display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; height: 84px; }
+.act-week::before { content: ""; position: absolute; left: 0; right: 0; bottom: calc(18px + (100% - 18px) * var(--goal, 0.8)); border-top: 1.5px dashed var(--line); pointer-events: none; }
+.act-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.act-bar .bar { flex: 1; width: 100%; max-width: 26px; display: flex; align-items: flex-end; }
+.act-bar i { display: block; width: 100%; border-radius: 6px; background: var(--accent-soft); transition: height 0.6s ease; }
+.act-bar.hit i { background: var(--accent); }
+.act-bar.sel i { box-shadow: 0 0 0 2px var(--accent-strong); }
+.act-bar b { font-size: 11px; font-weight: 600; color: var(--text-2); height: 14px; }
+.act-bar.sel b { color: var(--accent-strong); }
+.act-card .muted.tiny { margin: 0; }
+.two-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.two-inputs label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.two-inputs input { width: 100%; }
+.week-grid:has(#week-steps) { grid-template-columns: repeat(3, 1fr); row-gap: 12px; }
+
+/* drives in the History timeline */
+.timeline li.is-drive { cursor: pointer; }
+.timeline li.is-drive::before { background: #3B82F6; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.18); }
+
+/* ===== Speedometer while driving ===== */
+.speedo {
+  position: absolute; z-index: 555; left: 16px; bottom: calc(var(--sheet-h) + 14px); width: 76px; height: 76px; border-radius: 50%;
+  background: var(--card); color: var(--text); box-shadow: var(--shadow); border: 3px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; transition: bottom 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+html[dir="rtl"] .speedo { left: auto; right: 16px; }
+.speedo strong { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.speedo > span:not(.cam-sign) { font-size: 10px; color: var(--text-2); margin-top: 2px; }
+.speedo .cam-sign { position: absolute; top: -8px; right: -10px; }
+html[dir="rtl"] .speedo .cam-sign { right: auto; left: -10px; }
+.speedo.over { background: #D93A3F; border-color: #D93A3F; color: #fff; animation: speedo-pulse 1s ease-in-out infinite; }
+.speedo.over > span:not(.cam-sign) { color: rgba(255, 255, 255, 0.85); }
+@keyframes speedo-pulse { 50% { box-shadow: 0 0 0 10px rgba(217, 58, 63, 0.25); } }
+
+/* trip summary, finder QR, directions apps */
+.trip-head { display: flex; align-items: center; gap: 10px; }
+.trip-head svg { width: 30px; height: 30px; color: var(--accent-strong); }
+.trip-head h2 { margin: 0; }
+.trip-grid { grid-template-columns: repeat(3, 1fr); row-gap: 14px; }
+.trip-grid strong { font-size: 20px; }
+.trip-grid .bad strong { color: var(--danger); }
+.finder-qr { width: min(240px, 70vw); aspect-ratio: 1; margin: 0 auto; background: #fff; border-radius: 16px; padding: 10px; }
+.finder-qr svg { width: 100%; height: 100%; display: block; }
+.nav-g { background: #E8F0FE; color: #1A73E8; }
+.nav-w { background: #E6F9FF; color: #0099CC; }
+.nav-a { background: #EEF2F5; color: #111; }
+.pchip-go { border-color: var(--c); }
+
+@media (prefers-reduced-motion: reduce) {
+  .speedo.over { animation: none; }
+  .act-ring .ring-fg, .act-bar i { transition: none; }
+}

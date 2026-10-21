@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#0C0E12">
+  <title>Found a bag? · Trackly</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <!-- Finder page: opened by scanning the QR tag inside a bag. The owner's details are in the
+       link after "#" (never sent to any server). Calls, WhatsApp or sends the finder's location. -->
+  <style>
+    :root { --bg: #FAF7F2; --card: #FFFFFF; --card-2: #F1EEE7; --line: #E6E0D4; --text: #17130D; --text-2: #6E665A; --accent: #B8862E; --wa: #1FA855; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0C0E12; --card: #15181E; --card-2: #1D2129; --line: #2A2F38; --text: #F5F2EC; --text-2: #A39C90; --accent: #E8B86D; } }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", "Noto Sans Arabic", sans-serif;
+      display: flex; justify-content: center; padding: max(24px, env(safe-area-inset-top)) 16px 32px; }
+    main { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 16px; }
+    .langs { display: flex; gap: 6px; justify-content: flex-end; }
+    .langs button { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 12px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+    .langs button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .card { background: var(--card); border-radius: 24px; padding: 24px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.06); }
+    .icon { width: 64px; height: 64px; border-radius: 20px; background: var(--card-2); display: grid; place-items: center; color: var(--accent); }
+    .icon svg { width: 34px; height: 34px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    h1 { margin: 0; font-size: 26px; line-height: 1.2; }
+    p { margin: 0; color: var(--text-2); }
+    .msg { background: var(--card-2); border-radius: 16px; padding: 14px 16px; color: var(--text); white-space: pre-wrap; }
+    .msg:empty { display: none; }
+    a.btn, button.btn { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 56px; border-radius: 18px; border: none; font: inherit; font-weight: 600; font-size: 17px; text-decoration: none; cursor: pointer; }
+    .btn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .call { background: var(--text); color: var(--bg); }
+    .wa { background: var(--wa); color: #fff; }
+    .loc { background: var(--card-2); color: var(--text); }
+    .note { font-size: 13px; text-align: center; }
+    .bad { text-align: center; padding: 40px 0; }
+    [dir="rtl"] body { font-family: "Noto Sans Arabic", system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="langs" role="group" aria-label="Language">
+      <button type="button" data-l="en">EN</button><button type="button" data-l="ckb">کوردی</button><button type="button" data-l="ar">العربية</button>
+    </div>
+    <div class="card" id="card" hidden>
+      <div class="icon"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></div>
+      <h1 data-t="title"></h1>
+      <p id="sub"></p>
+      <div class="msg" id="msg"></div>
+      <a class="btn call" id="call"><svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg><span data-t="call"></span></a>
+      <a class="btn wa" id="wa" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.3L3 21z"/></svg><span data-t="wa"></span></a>
+      <button class="btn loc" id="loc" type="button"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span data-t="loc"></span></button>
+      <p class="note" data-t="thanks"></p>
+    </div>
+    <div class="card bad" id="bad" hidden><p data-t="bad"></p></div>
+  </main>
+  <script>
+    (function () {
+      var T = {
+        en: { title: 'You found a lost bag', sub_n: 'This is “{n}”. The owner would love to get it back.', sub: 'The owner would love to get it back.', call: 'Call the owner',
+          wa: 'Message on WhatsApp', loc: 'Send my location to the owner', thanks: 'Thank you for helping. Your details are not saved anywhere.',
+          bad: 'This link is not complete. Please check the tag again.', hi: 'Hello! I found your bag (Trackly tag).', here: 'I am here:', getting: 'Getting your location…', noloc: 'Couldn’t get your location. You can still call or message.' },
+        ckb: { title: 'جانتایەکی ونبووت دۆزیوەتەوە', sub_n: 'ئەمە «{n}»ە. خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', sub: 'خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', call: 'پەیوەندی بە خاوەنەکەیەوە بکە',
+          wa: 'نامە لە WhatsApp', loc: 'شوێنەکەم بۆ خاوەنەکەی بنێرە', thanks: 'سوپاس بۆ یارمەتیدانت. زانیارییەکانت لە هیچ شوێنێک هەڵناگیرێن.',
+          bad: 'ئەم بەستەرە تەواو نییە. تکایە دووبارە سەیری تاگەکە بکە.', hi: 'سڵاو! جانتاکەتم دۆزییەوە (تاگی Trackly).', here: 'من لێرەم:', getting: 'شوێنەکەت وەردەگیرێت…', noloc: 'نەتوانرا شوێنەکەت وەربگیرێت. هێشتا دەتوانیت پەیوەندی بکەیت یان نامە بنێریت.' },
+        ar: { title: 'لقد وجدت حقيبة مفقودة', sub_n: 'هذه «{n}». صاحبها يتمنى استعادتها.', sub: 'صاحبها يتمنى استعادتها.', call: 'اتصل بصاحبها',
+          wa: 'راسله على واتساب', loc: 'أرسل موقعي إلى صاحبها', thanks: 'شكراً لمساعدتك. لا يتم حفظ بياناتك في أي مكان.',
+          bad: 'هذا الرابط غير مكتمل. يرجى التحقق من البطاقة مرة أخرى.', hi: 'مرحباً! وجدت حقيبتك (بطاقة Trackly).', here: 'أنا هنا:', getting: 'جارٍ تحديد موقعك…', noloc: 'تعذر تحديد موقعك. ما زال بإمكانك الاتصال أو المراسلة.' }
+      };
+      var d = null;
+      try {
+        var b = location.hash.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+        d = JSON.parse(decodeURIComponent(escape(atob(b))));
+      } catch (e) { d = null; }
+      var nav = (navigator.language || 'en').slice(0, 2);
+      var lang = (d && d.l) || (nav === 'ar' ? 'ar' : (nav === 'ku' || nav === 'ck' ? 'ckb' : 'en'));
+      // a phone number for WhatsApp: digits only, Iraqi 07xx → 9647xx
+      function waNumber(p) {
+        var n = String(p || '').replace(/[^\d+]/g, '');
+        if (n.charAt(0) === '+') n = n.slice(1);
+        else if (n.indexOf('00') === 0) n = n.slice(2);
+        else if (n.charAt(0) === '0') n = '964' + n.slice(1);
+        return n;
+      }
+      function waLink(text) { return 'https://wa.me/' + waNumber(d.p) + '?text=' + encodeURIComponent(text); }
+      function render() {
+        var t = T[lang];
+        document.documentElement.lang = lang;
+        document.documentElement.dir = lang === 'en' ? 'ltr' : 'rtl';
+        document.querySelectorAll('[data-l]').forEach(function (x) { x.setAttribute('aria-pressed', String(x.dataset.l === lang)); });
+        document.querySelectorAll('[data-t]').forEach(function (x) { x.textContent = t[x.dataset.t]; });
+        if (!d || !d.p) { document.getElementById('bad').hidden = false; return; }
+        document.getElementById('card').hidden = false;
+        document.getElementById('sub').textContent = d.n ? t.sub_n.replace('{n}', d.n) : t.sub;
+        document.getElementById('msg').textContent = d.m || '';
+        document.getElementById('call').href = 'tel:' + String(d.p).replace(/[^\d+]/g, '');
+        document.getElementById('wa').href = waLink(t.hi);
+      }
+      document.querySelectorAll('[data-l]').forEach(function (x) { x.addEventListener('click', function () { lang = x.dataset.l; render(); }); });
+      document.getElementById('loc').addEventListener('click', function () {
+        var t = T[lang], btn = this, label = btn.querySelector('span');
+        if (!navigator.geolocation) { alert(t.noloc); return; }
+        label.textContent = t.getting;
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          label.textContent = t.loc;
+          var ll = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
+          location.href = waLink(t.hi + ' ' + t.here + ' https://maps.google.com/?q=' + ll);
+        }, function () { label.textContent = t.loc; alert(t.noloc); }, { enableHighAccuracy: true, timeout: 15000 });
+      });
+      render();
+    })();
+  </script>
+</body>
+</html>

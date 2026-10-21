@@ -202,6 +202,10 @@
         <span class="cam-row"><span class="cam-sign small">80</span><span data-i18n="cams">Speed cameras</span></span>
         <button id="btn-cams" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-cams" data-i18n-aria="cams" aria-label="Speed cameras"></button>
       </div>
+      <div class="row-between picker-row">
+        <span data-i18n="cam_sound">Warning sound</span>
+        <button id="btn-cam-sound" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-cam-sound" data-i18n-aria="cam_sound" aria-label="Warning sound"></button>
+      </div>
     </div>
 
     <div id="map-controls" class="map-controls">
@@ -274,6 +278,23 @@
       <!-- History tab -->
       <div id="panel-history" class="panel" hidden>
         <h2 data-i18n="journey">Journey</h2>
+        <div id="act-card" class="act-card">
+          <div class="act-top">
+            <div class="act-ring">
+              <svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring-bg" cx="60" cy="60" r="52"/><circle id="act-ring-fg" class="ring-fg" cx="60" cy="60" r="52"/></svg>
+              <div class="act-ring-txt"><strong id="act-steps">0</strong><span data-i18n="steps">steps</span><em id="act-goal-txt"></em></div>
+            </div>
+            <div class="act-stats">
+              <span id="act-title" class="label">Today</span>
+              <div><strong id="act-km">—</strong><span data-i18n="act_km">walked</span></div>
+              <div><strong id="act-kcal">—</strong><span data-i18n="act_kcal">calories (kcal)</span></div>
+              <div><strong id="act-min">—</strong><span data-i18n="act_min">active</span></div>
+            </div>
+          </div>
+          <div id="act-week" class="act-week" aria-hidden="true"></div>
+          <p id="act-src" class="muted tiny"></p>
+          <button id="act-resume" class="btn btn-secondary" type="button" data-action="steps-resume" hidden data-i18n="act_resume">Tap to keep counting steps</button>
+        </div>
         <div id="week-card" class="week-card" hidden>
           <span class="label" data-i18n="week_title">Last 7 days</span>
           <div class="week-grid">
@@ -281,6 +302,8 @@
             <div><strong id="week-days">—</strong><span data-i18n="week_days">days out</span></div>
             <div><strong id="week-stops">—</strong><span data-i18n="week_stops">stops</span></div>
             <div><strong id="week-away">—</strong><span data-i18n="week_away">away from home</span></div>
+            <div><strong id="week-steps">—</strong><span data-i18n="week_steps">steps a day</span></div>
+            <div><strong id="week-drives">—</strong><span data-i18n="week_drives">drives</span></div>
           </div>
           <span class="label" data-i18n="week_top">Most time spent at</span>
           <ol id="week-top" class="week-top"></ol>
@@ -370,6 +393,30 @@
 
         <section class="acc-section">
           <div class="row-between">
+            <div><h3 data-i18n="steps_title">Count my steps</h3><p class="muted small" data-i18n="steps_sub">Uses this phone’s motion sensor while Trackly is open. Without it, steps are estimated from your bag’s walks.</p></div>
+            <button id="steps-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-steps" data-i18n-aria="steps_title" aria-label="Count my steps"></button>
+          </div>
+          <div class="two-inputs">
+            <label><span class="label" data-i18n="weight">Weight (kg)</span><input id="act-weight" type="number" inputmode="numeric" min="25" max="250" placeholder="70" dir="ltr"></label>
+            <label><span class="label" data-i18n="goal">Daily step goal</span><input id="act-goal" type="number" inputmode="numeric" min="1000" max="50000" step="500" placeholder="8000" dir="ltr"></label>
+          </div>
+        </section>
+
+        <section class="acc-section">
+          <h3 data-i18n="finder_title">If someone finds my bag</h3>
+          <p class="muted small" data-i18n="finder_sub">A page with your phone number. Print its QR code and put it inside the bag.</p>
+          <label class="label" for="finder-phone" data-i18n="finder_phone">Your phone number (WhatsApp)</label>
+          <input id="finder-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0750 123 4567" dir="ltr">
+          <label class="label" for="finder-msg" data-i18n="finder_msg">Message for the finder</label>
+          <input id="finder-msg" maxlength="140" data-i18n-ph="finder_msg_ph" placeholder="Thank you! Please call me, there is a reward.">
+          <div class="actions">
+            <button class="btn btn-secondary" type="button" data-action="finder-share" data-i18n="finder_share">Share link</button>
+            <button class="btn btn-primary" type="button" data-action="finder-qr" data-i18n="finder_qr">Show QR</button>
+          </div>
+        </section>
+
+        <section class="acc-section">
+          <div class="row-between">
             <div><h3 data-i18n="mfa_title">Two-step login</h3><p id="mfa-state" class="muted small"></p></div>
             <button id="mfa-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="mfa" data-i18n-aria="mfa_title" aria-label="Two-step login"></button>
           </div>
@@ -448,6 +495,7 @@
     </nav>
 
     <!-- back to the bag after dragging the map away -->
+    <div id="speedo" class="speedo" hidden aria-live="off"><strong id="speedo-val">0</strong><span data-i18n="kmh">km/h</span><span id="speedo-limit" class="cam-sign small" hidden></span></div>
     <button id="back-to-bag" class="back-pill" type="button" data-action="center-bag" hidden><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span data-i18n="center_bag">Show my bag</span></button>
   </section>
 
@@ -577,6 +625,46 @@
       </ul>
       <button class="btn btn-danger btn-lg" type="button" data-action="confirm-lost" data-i18n="confirm_yes">Yes, my bag is lost</button>
       <button class="btn btn-secondary btn-lg" type="button" data-action="cancel-lost" data-i18n="cancel">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ============ DIRECTIONS: WHICH APP ============ -->
+  <div id="nav-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="nav-title">
+    <div class="modal-card lang-card">
+      <h2 id="nav-title" data-i18n="nav_title">Directions with</h2>
+      <button class="lang-opt" type="button" data-action="nav-go" data-app="google"><span class="lang-flag nav-g">G</span><span><strong>Google Maps</strong></span></button>
+      <button class="lang-opt" type="button" data-action="nav-go" data-app="waze"><span class="lang-flag nav-w">W</span><span><strong>Waze</strong></span></button>
+      <button id="nav-apple" class="lang-opt" type="button" data-action="nav-go" data-app="apple"><span class="lang-flag nav-a">A</span><span><strong>Apple Maps</strong></span></button>
+      <button class="btn btn-secondary btn-lg" type="button" data-action="close-nav" data-i18n="close">Close</button>
+    </div>
+  </div>
+
+  <!-- ============ TRIP SUMMARY ============ -->
+  <div id="trip-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="trip-title">
+    <div class="modal-card">
+      <div class="trip-head"><svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg><h2 id="trip-title" data-i18n="trip_done">Trip finished</h2></div>
+      <div class="week-grid trip-grid">
+        <div><strong id="trip-km"></strong><span data-i18n="trip_km">distance</span></div>
+        <div><strong id="trip-time"></strong><span data-i18n="trip_time">time</span></div>
+        <div><strong id="trip-avg"></strong><span data-i18n="trip_avg">average</span></div>
+        <div><strong id="trip-top"></strong><span data-i18n="trip_top">top speed</span></div>
+        <div><strong id="trip-cams"></strong><span data-i18n="trip_cams">cameras passed</span></div>
+        <div><strong id="trip-over"></strong><span data-i18n="trip_over">too fast at a camera</span></div>
+      </div>
+      <button class="btn btn-primary btn-lg" type="button" data-action="close-trip" data-i18n="close">Close</button>
+    </div>
+  </div>
+
+  <!-- ============ FINDER TAG QR ============ -->
+  <div id="finder-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="finder-v-title">
+    <div class="modal-card">
+      <h2 id="finder-v-title" data-i18n="finder_title">If someone finds my bag</h2>
+      <div id="finder-qr" class="finder-qr"></div>
+      <p class="muted small center" data-i18n="finder_qr_sub">Print it and put it inside your bag. Whoever scans it can call you, message you or send you where they are.</p>
+      <div class="actions">
+        <button class="btn btn-secondary" type="button" data-action="close-finder" data-i18n="close">Close</button>
+        <button class="btn btn-primary" type="button" data-action="finder-print" data-i18n="finder_print">Print tag</button>
+      </div>
     </div>
   </div>
 

@@ -169,7 +169,8 @@
   }
 
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
-    places: 'trackly-places', cams: 'trackly-cams', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', goal: 'trackly-goal',
+    finder: 'trackly-finder', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -201,6 +202,8 @@
     if (s.places != null) places.on = s.places !== '0';
     if (s.cams != null) { cams.on = s.cams !== '0'; if (map.m) renderCams(); }
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
+    renderStepsSettings(); renderCamSound(); renderFinder();
+    if (stepsOn()) startSteps(false);
   }
 
   function setLang(lang) {
@@ -607,14 +610,17 @@
       renderFind();
       checkLeftBehind();
       checkCamAhead(pos);
+      onDriveFix(pos);
     };
     // a quick first answer (the phone's last known spot), then live updates as you move
     navigator.geolocation.getCurrentPosition(onFix, () => {}, { maximumAge: 60000, timeout: 8000 });
-    meWatch = navigator.geolocation.watchPosition(onFix, () => {
+    // no timeout: standing still for a while isn't an error. Only "not allowed" stops it.
+    meWatch = navigator.geolocation.watchPosition(onFix, (err) => {
+      if (err.code !== 1) return;
       toast(t('toast_no_gps'));
       navigator.geolocation.clearWatch(meWatch); meWatch = null; meWaiting = null;
       $('[data-action="locate-me"]').classList.remove('active');
-    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+    }, { enableHighAccuracy: true, maximumAge: 5000 });
   }
   function drawMe() {
     if (!state.me) return;
@@ -628,7 +634,7 @@
   function openDirections() {
     const loc = state.recent[0];
     if (!loc) return;
-    window.open('https://www.google.com/maps/dir/?api=1&destination=' + loc.lat.toFixed(6) + ',' + loc.lng.toFixed(6), '_blank', 'noopener');
+    openNavMenu(loc.lat, loc.lng);
   }
 
   // The safe zone a point is inside (smallest one first), or null
@@ -674,6 +680,7 @@
       '<dt data-k="accuracy"></dt><dd id="bi-acc"></dd>' +
       '<dt data-k="updated"></dt><dd id="bi-time"></dd>' +
       '<dt data-k="status"></dt><dd id="bi-move"></dd>' +
+      '<dt data-k="battery_left"></dt><dd id="bi-batt"></dd>' +
       '</dl>' +
       '<div class="bi-actions"><button type="button" class="btn btn-secondary" id="bi-copy"></button><button type="button" class="btn btn-primary" id="bi-maps"></button></div>';
     box.querySelectorAll('[data-k]').forEach((x) => { x.textContent = t(x.dataset.k); });
@@ -703,6 +710,7 @@
     document.getElementById('bi-time').textContent = clockTime(i.loc.created_at) + ' · ' + relTime(ageSeconds(i.loc));
     document.getElementById('bi-move').textContent = i.stale ? t('unknown')
       : (i.heading !== null ? t('moving_dir', { n: i.kmh, dir: t('dir_' + compass(i.heading)) }) : t('still'));
+    document.getElementById('bi-batt').textContent = batteryLeftText(i.loc.battery, state.tracker && state.tracker.mode === 'lost') || '—';
   }
 
   // ---- today's path on the main map (the wavy-line button) ----
@@ -807,6 +815,7 @@
     if (!tr || !map.m) return;
     const lost = tr.mode === 'lost';
     const loc = state.recent[0];
+    updateBadge(tr, loc);
 
     $('#bag-name').textContent = tr.name || tr.device_code;
     $('#lost-label').hidden = !lost;
@@ -1069,6 +1078,7 @@
     $('#style-picker').hidden = true;
 
     if (tab === 'history') { loadHistory(); loadWeekly(); }
+    if (tab !== 'map') $('#speedo').hidden = true;
     if (tab === 'zones') drawZones(true);
     if (tab === 'map') { state.followBag = true; drawZones(false); }
     $('#map-controls').hidden = tab === 'history' || tab === 'account';
@@ -1095,6 +1105,8 @@
 
   async function loadHistory() {
     if (!state.tracker) return;
+    renderActivity();
+    await loadCams();
     const [start, end] = historyRange();
     const { data, error } = await sb.from('locations')
       .select('lat, lng, battery, created_at')
@@ -1110,6 +1122,8 @@
     if (error) { toast(errorText(error)); return; }
     const pts = data || [];
     state.historyPts = pts;
+    Object.assign(act.bag, bagActivity(pts));
+    renderActivity();
     stopReplay();
     $('#replay').hidden = pts.length < 2;
     if (!pts.length) {
@@ -1157,11 +1171,15 @@
       events.push({ time: s.from, title: t('stop'), sub: fmtDuration(s.mins) + ' · ' + clockTime(s.from) + '–' + clockTime(s.to), stop: s, n: k + 1 });
       L.marker([s.lat, s.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="stop-pin">' + (k + 1) + '</div>' }) }).addTo(group);
     });
+    const drives = findDrives(pts);
+    drives.forEach((dr) => events.push({ time: dr.from, title: t('drive'), sub: driveText(dr) + ' · ' + clockTime(dr.from) + '–' + clockTime(dr.to), drive: dr }));
     events.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
     if (stops.length) $('#history-summary').textContent += ' · ' + t('stops_n', { n: stops.length });
+    if (drives.length) $('#history-summary').textContent += ' · ' + t('drives_n', { n: drives.length });
     events.forEach((ev) => {
       const li = document.createElement('li');
       if (ev.stop) { li.className = 'is-stop'; li.dataset.n = ev.n; }
+      if (ev.drive) { li.className = 'is-drive'; li.addEventListener('click', () => map.m.fitBounds(L.latLngBounds(ev.drive.pts.map((q) => [q.lat, q.lng])), { paddingTopLeft: [32, 140], paddingBottomRight: [32, coverH() + 24], maxZoom: 16 })); }
       const time = document.createElement('time');
       time.textContent = clockTime(ev.time);
       const box = document.createElement('div');
@@ -1566,7 +1584,473 @@
     if (cams.warned[key] && Date.now() - cams.warned[key] < 5 * 60e3) return;
     cams.warned[key] = Date.now();
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    beep('cam');
     toast(best.c[2] ? t('cam_ahead_limit', { d: fmtDistance(best.d), n: best.c[2] }) : t('cam_ahead', { d: fmtDistance(best.d) }));
+  }
+
+  // =====================================================================
+  // ACTIVITY — steps, distance walked, calories and active minutes
+  // Steps: this phone's motion sensor while Trackly is open (Account → Count my steps), and all day,
+  // without the phone, an estimate from the bag's walks (its walking-speed parts ÷ a 0.75 m step).
+  // The day shows whichever is higher, so steps are never counted twice.
+  // =====================================================================
+  const STEP_M = 0.75;
+  const act = { bag: {}, sensor: false, gotEvent: false, needTap: false, lastPeak: 0, run: 0, pending: 0, smooth: 9.8, above: false, today: null, saveTimer: null, drawTimer: null };
+  const dayKey = (d) => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  const weightKg = () => Math.min(250, Math.max(25, Number(localStorage.getItem('trackly-weight')) || 70));
+  const stepGoal = () => Math.min(50000, Math.max(1000, Number(localStorage.getItem('trackly-goal')) || 8000));
+  const stepsOn = () => localStorage.getItem('trackly-steps-on') === '1';
+  const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
+  function phoneSteps() { try { return JSON.parse(localStorage.getItem('trackly-steps')) || {}; } catch (e) { return {}; } }
+  function savePhoneSteps() {
+    const all = phoneSteps();
+    if (act.today) all[act.today.k] = { s: act.today.s, m: act.today.m };
+    const keys = Object.keys(all).sort();
+    while (keys.length > 60) delete all[keys.shift()];
+    try { localStorage.setItem('trackly-steps', JSON.stringify(all)); } catch (e) { /* storage full */ }
+  }
+  function addSteps(n) {
+    const k = dayKey(Date.now()), minute = Math.floor(Date.now() / 60000);
+    if (!act.today || act.today.k !== k) { const d = phoneSteps()[k] || { s: 0, m: 0 }; act.today = { k, s: d.s, m: d.m, lm: 0 }; }
+    const before = act.today.s;
+    act.today.s += n;
+    if (act.today.lm !== minute) { act.today.lm = minute; act.today.m++; }
+    if (before < stepGoal() && act.today.s >= stepGoal()) { toast(t('goal_done')); if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]); }
+    clearTimeout(act.saveTimer); act.saveTimer = setTimeout(savePhoneSteps, 3000);
+    if (state.tab === 'history' && !act.drawTimer) act.drawTimer = setTimeout(() => { act.drawTimer = null; renderActivity(); }, 1000);
+  }
+  // a step = a peak in the phone's movement; only runs of 6+ steps count (picking the phone up isn't walking)
+  function onMotion(e) {
+    const a = e.accelerationIncludingGravity;
+    if (!a || a.x == null) return;
+    act.gotEvent = true;
+    const mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+    act.smooth = act.smooth * 0.75 + mag * 0.25;
+    if (act.above) { if (act.smooth < 10.3) act.above = false; return; }
+    if (act.smooth < 11.3) return;
+    act.above = true;
+    const now = Date.now(), gap = now - act.lastPeak;
+    if (gap < 280) return;                       // too fast to be a step: shaking
+    act.lastPeak = now;
+    if (gap > 2000) { act.run = 1; act.pending = 1; return; }
+    act.run++; act.pending++;
+    if (act.run >= 6) { addSteps(act.pending); act.pending = 0; }
+  }
+  async function startSteps(fromTap) {
+    if (act.sensor) return true;
+    if (!('DeviceMotionEvent' in window)) return false;
+    // iPhone asks for permission, and only after a tap
+    if (fromTap && typeof DeviceMotionEvent.requestPermission === 'function') {
+      try { if ((await DeviceMotionEvent.requestPermission()) !== 'granted') return false; } catch (e) { return false; }
+    }
+    window.addEventListener('devicemotion', onMotion);
+    act.sensor = true;
+    setTimeout(() => {                          // no readings: an iPhone that needs a tap again
+      if (act.sensor && !act.gotEvent && typeof DeviceMotionEvent.requestPermission === 'function') { stopSteps(); act.needTap = true; renderActivity(); }
+    }, 2500);
+    return true;
+  }
+  function stopSteps() {
+    window.removeEventListener('devicemotion', onMotion);
+    act.sensor = false;
+    if (act.today) savePhoneSteps();
+  }
+  async function toggleSteps() {
+    if (stepsOn()) { localStorage.setItem('trackly-steps-on', '0'); stopSteps(); act.needTap = false; }
+    else if (await startSteps(true)) {
+      localStorage.setItem('trackly-steps-on', '1');
+      act.needTap = false;
+      setTimeout(() => { if (stepsOn() && !act.gotEvent) toast(t('steps_no')); }, 3000);
+    } else toast(t('steps_no'));
+    syncSettings(); renderStepsSettings(); renderActivity();
+  }
+  async function resumeSteps() { if (await startSteps(true)) { act.needTap = false; renderActivity(); } }
+  function renderStepsSettings() {
+    if ($('#steps-switch')) $('#steps-switch').setAttribute('aria-checked', String(stepsOn()));
+    const w = localStorage.getItem('trackly-weight'), g = localStorage.getItem('trackly-goal');
+    if ($('#act-weight') && document.activeElement !== $('#act-weight')) $('#act-weight').value = w || '';
+    if ($('#act-goal') && document.activeElement !== $('#act-goal')) $('#act-goal').value = g || '';
+  }
+  // the bag's walking parts (1.5–7 km/h) per day
+  function bagActivity(pts) {
+    const out = {};
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const s = (new Date(b.created_at) - new Date(a.created_at)) / 1000;
+      if (s <= 0 || s > 6 * 60) continue;
+      const d = distanceM(a, b), kmh = d / s * 3.6;
+      if (d < 15 || kmh < 1.5 || kmh > 7) continue;
+      const k = dayKey(b.created_at);
+      const o = out[k] || (out[k] = { walkM: 0, walkS: 0 });
+      o.walkM += d; o.walkS += s;
+    }
+    return out;
+  }
+  function dayActivity(k) {
+    const p = (act.today && act.today.k === k) ? act.today : phoneSteps()[k];
+    const b = act.bag[k];
+    const phone = p ? p.s : 0, bagSteps = b ? Math.round(b.walkM / STEP_M) : 0;
+    const usePhone = phone > 0 && phone >= bagSteps;
+    const steps = Math.max(phone, bagSteps);
+    const km = usePhone ? phone * STEP_M / 1000 : (b ? b.walkM / 1000 : 0);
+    const mins = usePhone ? p.m : (b ? Math.round(b.walkS / 60) : 0);
+    // walking burns about 0.5 kcal per kg of body weight per km
+    return { steps, km, mins, kcal: Math.round(km * weightKg() * 0.5), src: steps ? (usePhone ? 'phone' : 'bag') : '' };
+  }
+  function renderActivity() {
+    const card = $('#act-card');
+    if (!card) return;
+    const [start] = historyRange();
+    const k = dayKey(start), isToday = k === dayKey(Date.now());
+    const d = dayActivity(k), goal = stepGoal();
+    $('#act-title').textContent = isToday ? t('act_today') : start.toLocaleDateString(state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn'), { weekday: 'long', day: 'numeric', month: 'short' });
+    $('#act-steps').textContent = fmtNum(d.steps);
+    $('#act-goal-txt').textContent = t('act_goal', { n: fmtNum(goal) });
+    $('#act-km').textContent = d.km ? fmtDistance(d.km * 1000) : '—';
+    $('#act-kcal').textContent = d.kcal ? fmtNum(d.kcal) : '—';
+    $('#act-min').textContent = d.mins ? fmtDuration(d.mins) : '—';
+    const ring = $('#act-ring-fg'), len = 2 * Math.PI * 52;
+    ring.style.strokeDasharray = len;
+    ring.style.strokeDashoffset = len * (1 - Math.min(1, d.steps / goal));
+    card.classList.toggle('done', d.steps >= goal);
+    $('#act-src').textContent = d.src === 'phone' ? t('act_src_phone') : (d.src === 'bag' ? t('act_src_bag') : (stepsOn() ? t('act_src_wait') : t('act_src_none')));
+    $('#act-resume').hidden = !(act.needTap && stepsOn() && isToday);
+    // the last 7 days as bars, the dashed line is the goal
+    const days = [];
+    for (let i = 6; i >= 0; i--) { const x = new Date(); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() - i); days.push(x); }
+    const vals = days.map((x) => dayActivity(dayKey(x)).steps);
+    const top = Math.max(goal * 1.15, ...vals);
+    const wk = $('#act-week');
+    wk.innerHTML = '';
+    wk.style.setProperty('--goal', (goal / top).toFixed(3));
+    days.forEach((x, i) => {
+      const col = document.createElement('div');
+      col.className = 'act-bar' + (dayKey(x) === k ? ' sel' : '') + (vals[i] >= goal ? ' hit' : '');
+      col.innerHTML = '<span class="bar"><i></i></span><b></b>';
+      col.querySelector('i').style.height = Math.max(vals[i] ? 4 : 0, vals[i] / top * 100) + '%';
+      col.querySelector('b').textContent = state.lang === 'ckb' ? 'یدسچپهش'[x.getDay()] : x.toLocaleDateString(state.lang === 'en' ? 'en-GB' : 'ar', { weekday: 'narrow' });
+      col.title = fmtNum(vals[i]) + ' ' + t('steps');
+      wk.appendChild(col);
+    });
+    const avg = vals.reduce((a, b) => a + b, 0) / 7;
+    if ($('#week-steps')) $('#week-steps').textContent = avg ? fmtNum(avg) : '—';
+  }
+
+  // =====================================================================
+  // DRIVES — parts of the bag's path faster than 15 km/h (a stop of 5 min+ ends one),
+  // with distance, time, top speed and the speed cameras on the way
+  // =====================================================================
+  function segDist(c, a, b, kx, ky) {
+    const ax = (a.lng - c[1]) * kx, ay = (a.lat - c[0]) * ky, bx = (b.lng - c[1]) * kx, by = (b.lat - c[0]) * ky;
+    const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+    const u = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+    return Math.hypot(ax + u * dx, ay + u * dy);
+  }
+  function camsOnPath(pts) {
+    if (!cams.list || pts.length < 2) return 0;
+    let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+    for (const p of pts) { minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat); minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng); }
+    const kx = 111320 * Math.cos(minLat * Math.PI / 180), ky = 110540;
+    let n = 0;
+    for (const c of cams.list) {
+      if (c[0] < minLat - 0.001 || c[0] > maxLat + 0.001 || c[1] < minLng - 0.001 || c[1] > maxLng + 0.001) continue;
+      for (let i = 1; i < pts.length; i++) if (segDist(c, pts[i - 1], pts[i], kx, ky) < 40) { n++; break; }
+    }
+    return n;
+  }
+  function findDrives(pts) {
+    const out = [];
+    let cur = null, lastFast = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const ta = new Date(a.created_at).getTime(), tb = new Date(b.created_at).getTime(), s = (tb - ta) / 1000;
+      if (s <= 0 || s > 10 * 60) continue;
+      const d = distanceM(a, b), kmh = d / s * 3.6;
+      if (kmh < 15 || kmh > 160) continue;
+      if (!cur || ta - lastFast > 5 * 60e3) { if (cur) out.push(cur); cur = { from: a.created_at, to: b.created_at, m: 0, top: 0, pts: [a] }; }
+      cur.m += d; cur.top = Math.max(cur.top, kmh); cur.to = b.created_at; cur.pts.push(b); lastFast = tb;
+    }
+    if (cur) out.push(cur);
+    return out.filter((x) => x.m >= 1000).map((x) => Object.assign(x, { mins: (new Date(x.to) - new Date(x.from)) / 60000, cams: camsOnPath(x.pts) }));
+  }
+  function driveText(dr) {
+    return t('drive_sub', { km: fmtDistance(dr.m), t: fmtDuration(Math.max(1, Math.round(dr.mins))), s: Math.round(dr.top) }) + (dr.cams ? ' · ' + t('cams_n', { n: dr.cams }) : '');
+  }
+
+  // =====================================================================
+  // DRIVING WITH THIS PHONE ("My location" on): speedometer, the limit of the camera ahead,
+  // a warning when too fast, and a trip summary when the drive ends
+  // =====================================================================
+  const drive = { trip: null, slowSince: 0, last: null, overBeep: 0, hideTimer: null };
+  function camAhead(p, heading) {
+    const known = heading != null && !isNaN(heading);
+    const range = known ? 800 : 300;
+    let best = null;
+    for (const c of cams.list || []) {
+      if (!c[2] || Math.abs(c[0] - p.lat) > 0.008 || Math.abs(c[1] - p.lng) > 0.01) continue;
+      const cp = { lat: c[0], lng: c[1] }, d = distanceM(p, cp);
+      if (d > range) continue;
+      if (known && d > 60) { let diff = Math.abs(bearing(p, cp) - heading) % 360; if (diff > 180) diff = 360 - diff; if (diff > 40) continue; }
+      if (!best || d < best.d) best = { d, limit: c[2], key: c[0] + ',' + c[1] };
+    }
+    return best;
+  }
+  function onDriveFix(pos) {
+    const c = pos.coords, now = pos.timestamp || Date.now();
+    const p = { lat: c.latitude, lng: c.longitude };
+    const prev = drive.last;
+    drive.last = { lat: p.lat, lng: p.lng, t: now };
+    if (drive.trip && now - drive.trip.end > 10 * 60e3) endTrip();      // the app was closed for a while
+    let kmh = (c.speed != null && c.speed >= 0) ? c.speed * 3.6 : null;
+    if (kmh === null && prev) { const s = (now - prev.t) / 1000; if (s >= 1 && s <= 30) kmh = distanceM(prev, p) / s * 3.6; }
+    if (kmh === null || kmh > 250) return;
+    if (kmh >= 15 && !drive.trip) drive.trip = { start: now, end: now, m: 0, top: 0, cams: new Set(), over: new Set() };
+    const tr = drive.trip;
+    if (tr) {
+      if (prev && c.accuracy < 60 && kmh >= 3) tr.m += distanceM(prev, p);
+      tr.top = Math.max(tr.top, kmh);
+      for (const cm of cams.list || []) if (Math.abs(cm[0] - p.lat) < 0.0008 && Math.abs(cm[1] - p.lng) < 0.001 && distanceM(p, { lat: cm[0], lng: cm[1] }) < 50) tr.cams.add(cm[0] + ',' + cm[1]);
+      if (kmh < 5) { if (!drive.slowSince) drive.slowSince = now; else if (now - drive.slowSince > 3 * 60e3) { tr.end = drive.slowSince; endTrip(); } }
+      else { drive.slowSince = 0; tr.end = now; }
+    }
+    renderSpeedo(kmh, p, c.heading);
+  }
+  function renderSpeedo(kmh, p, heading) {
+    const el = $('#speedo');
+    clearTimeout(drive.hideTimer);
+    if (kmh < 10 && !drive.trip) { el.hidden = true; return; }
+    el.hidden = state.tab !== 'map' || !!state.zoneEdit;
+    $('#speedo-val').textContent = Math.round(kmh);
+    const ahead = cams.on ? camAhead(p, heading) : null;
+    $('#speedo-limit').hidden = !ahead;
+    if (ahead) $('#speedo-limit').textContent = ahead.limit;
+    const over = !!ahead && kmh > ahead.limit + 3;
+    el.classList.toggle('over', over);
+    if (over) {
+      if (drive.trip) drive.trip.over.add(ahead.key);
+      if (Date.now() - drive.overBeep > 8000) { drive.overBeep = Date.now(); beep('over'); if (navigator.vibrate) navigator.vibrate(250); }
+    }
+    drive.hideTimer = setTimeout(() => { el.hidden = true; }, 15000);   // no news from the GPS: hide it
+  }
+  function endTrip() {
+    const tr = drive.trip;
+    drive.trip = null; drive.slowSince = 0;
+    $('#speedo').hidden = true;
+    if (!tr) return;
+    const mins = (tr.end - tr.start) / 60000;
+    if (tr.m < 1000 || mins < 2) return;
+    const trip = { at: new Date(tr.start).toISOString(), m: Math.round(tr.m), mins: Math.round(mins), top: Math.round(tr.top), cams: tr.cams.size, over: tr.over.size };
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem('trackly-trips')) || []; } catch (e) { /* none */ }
+    list.unshift(trip);
+    try { localStorage.setItem('trackly-trips', JSON.stringify(list.slice(0, 30))); } catch (e) { /* full */ }
+    showTrip(trip);
+  }
+  function showTrip(trip) {
+    $('#trip-km').textContent = fmtDistance(trip.m);
+    $('#trip-time').textContent = fmtDuration(Math.max(1, trip.mins));
+    $('#trip-avg').textContent = Math.round(trip.m / 1000 / Math.max(1, trip.mins) * 60) + ' ' + t('kmh');
+    $('#trip-top').textContent = trip.top + ' ' + t('kmh');
+    $('#trip-cams').textContent = String(trip.cams);
+    $('#trip-over').textContent = String(trip.over);
+    $('#trip-over').parentElement.classList.toggle('bad', trip.over > 0);
+    $('#trip-view').hidden = false;
+  }
+
+  // ---- short beeps (speed camera ahead / too fast); phones only play sound after the first tap ----
+  let audioCtx = null;
+  function unlockAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { /* no sound on this phone */ }
+  }
+  const camSoundOn = () => localStorage.getItem('trackly-cam-sound') !== '0';
+  function beep(kind) {
+    if (!camSoundOn() || !audioCtx) return;
+    const tones = kind === 'over' ? [[880, 0], [880, 0.2], [880, 0.4]] : [[660, 0], [990, 0.2]];
+    const t0 = audioCtx.currentTime;
+    for (const [f, at] of tones) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t0 + at);
+      g.gain.exponentialRampToValueAtTime(0.4, t0 + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.16);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0 + at); o.stop(t0 + at + 0.18);
+    }
+  }
+  function toggleCamSound() {
+    localStorage.setItem('trackly-cam-sound', camSoundOn() ? '0' : '1');
+    syncSettings();
+    renderCamSound();
+    if (camSoundOn()) { unlockAudio(); beep('cam'); }
+    toast(camSoundOn() ? t('cam_sound_on') : t('cam_sound_off'));
+  }
+  function renderCamSound() { if ($('#btn-cam-sound')) $('#btn-cam-sound').setAttribute('aria-checked', String(camSoundOn())); }
+
+  // =====================================================================
+  // OPEN NOW? — reads OpenStreetMap opening hours. The common forms only ("24/7",
+  // "Mo-Fr 08:00-22:00; Sa 10:00-14:00", "Mo-Su 09:00-13:00,16:00-02:00", "Fr off"); anything else → null
+  // =====================================================================
+  const OH_DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+  function openNow(oh, when) {
+    if (!oh) return null;
+    const s = oh.trim();
+    if (s === '24/7' || /^Mo-Su 00:00-24:00$/.test(s)) return true;
+    const now = when || new Date();
+    const day = (now.getDay() + 6) % 7, yday = (day + 6) % 7, mins = now.getHours() * 60 + now.getMinutes();
+    let result = false, known = false;
+    for (const raw of s.split(';')) {
+      const r = raw.trim();
+      if (!r || /^(PH|SH)\b/.test(r)) continue;
+      const m = r.match(/^((?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))?(?:\s*,\s*(?:Mo|Tu|We|Th|Fr|Sa|Su)(?:\s*-\s*(?:Mo|Tu|We|Th|Fr|Sa|Su))?)*)?\s*(.*)$/);
+      const days = new Set();
+      if (m[1]) for (const piece of m[1].split(',')) {
+        const [a, b] = piece.split('-').map((x) => OH_DAYS.indexOf(x.trim()));
+        if (b === undefined) days.add(a); else for (let i = a; ; i = (i + 1) % 7) { days.add(i); if (i === b) break; }
+      } else for (let i = 0; i < 7; i++) days.add(i);
+      const times = m[2].trim();
+      if (/^(off|closed)$/i.test(times)) { if (days.has(day)) { result = false; known = true; } continue; }
+      const ranges = [];
+      for (const part of times.split(',')) {
+        const x = part.trim().match(/^(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\+?$/);
+        if (!x) return null;
+        ranges.push([+x[1] * 60 + +x[2], +x[3] * 60 + +x[4]]);
+      }
+      if (days.has(day)) { known = true; result = ranges.some(([a, b]) => (b > a ? mins >= a && mins < b : mins >= a)); }
+      if (days.has(yday) && ranges.some(([a, b]) => b <= a && mins < b)) { known = true; result = true; }   // open past midnight
+    }
+    return known ? result : null;
+  }
+  async function findOpenPharmacy() {
+    const from = state.me || state.recent[0] || null;
+    if (!from) { toast(t('no_location')); return; }
+    toast(t('ph_searching'));
+    const els = await overpassOnce('[out:json][timeout:20];nwr["amenity"="pharmacy"](around:4000,' + from.lat + ',' + from.lng + ');out center tags 100;').catch(() => null);
+    let list;
+    if (els) list = els.map(toPlace).filter(Boolean);
+    else {                                         // place server busy: the pharmacies the map already has (hours unknown)
+      harvestVectorPlaces();
+      list = [...places.all.values()].filter((p) => p.tags.kind === 'pharmacy' || p.tags.amenity === 'pharmacy');
+      if (!list.length) { toast(t('err_offline')); return; }
+    }
+    list = list.map((p) => Object.assign(p, { d: distanceM(from, p), open: openNow(p.tags.opening_hours) }));
+    const near = (arr) => arr.sort((a, b) => a.d - b.d)[0];
+    const pick = near(list.filter((p) => p.open === true)) || near(list.filter((p) => p.open === null));
+    if (!pick) { toast(t('ph_none')); return; }
+    state.followBag = false; updateCenterBtn();
+    if (state.tab !== 'map') switchTab('map');
+    map.m.setView([pick.lat, pick.lng], 17);
+    showPlace(pick);
+    toast((pick.open ? t('ph_open') : t('ph_maybe')) + ' · ' + fmtDistance(pick.d));
+  }
+
+  // =====================================================================
+  // DIRECTIONS — Google Maps, Waze or Apple Maps
+  // =====================================================================
+  let navTo = null;
+  function openNavMenu(lat, lng) {
+    navTo = { lat, lng };
+    $('#nav-apple').hidden = !/iPhone|iPad|Macintosh/.test(navigator.userAgent);
+    $('#nav-menu').hidden = false;
+  }
+  function navGo(app) {
+    if (!navTo) return;
+    const ll = navTo.lat.toFixed(6) + ',' + navTo.lng.toFixed(6);
+    const url = app === 'waze' ? 'https://waze.com/ul?ll=' + ll + '&navigate=yes'
+      : app === 'apple' ? 'https://maps.apple.com/?daddr=' + ll
+      : 'https://www.google.com/maps/dir/?api=1&destination=' + ll;
+    localStorage.setItem('trackly-nav-app', app);
+    closeModal($('#nav-menu'));
+    window.open(url, '_blank', 'noopener');
+  }
+
+  // =====================================================================
+  // FINDER TAG — a page with your phone number: print the QR and put it inside the bag.
+  // Whoever finds the bag scans it and can call you, message you or send you where they are.
+  // The details are in the link itself (after #), so they're never stored on a server.
+  // =====================================================================
+  function finderData() { try { return JSON.parse(localStorage.getItem('trackly-finder')) || {}; } catch (e) { return {}; } }
+  function saveFinder() {
+    const d = { p: $('#finder-phone').value.trim().slice(0, 30), m: $('#finder-msg').value.trim().slice(0, 140) };
+    localStorage.setItem('trackly-finder', JSON.stringify(d));
+    syncSettings();
+  }
+  function renderFinder() {
+    const d = finderData();
+    if (document.activeElement !== $('#finder-phone')) $('#finder-phone').value = d.p || '';
+    if (document.activeElement !== $('#finder-msg')) $('#finder-msg').value = d.m || '';
+  }
+  function finderLink() {
+    const d = finderData();
+    if (!d.p) { toast(t('finder_need_phone')); $('#finder-phone').focus(); return null; }
+    const name = state.tracker ? (state.tracker.name || '') : '';
+    const json = JSON.stringify({ n: name, p: d.p, m: d.m || '', l: state.lang });
+    const b64 = btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return new URL('found.html#' + b64, location.href).href;
+  }
+  function loadQrLib() {
+    if (window.qrcode) return Promise.resolve();
+    return new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  async function showFinderQr() {
+    saveFinder();
+    const link = finderLink();
+    if (!link) return;
+    try { await loadQrLib(); } catch (e) { toast(t('err_offline')); return; }
+    const qr = window.qrcode(0, 'M'); qr.addData(link); qr.make();
+    $('#finder-qr').innerHTML = qr.createSvgTag({ scalable: true, margin: 2 });
+    $('#finder-view').hidden = false;
+  }
+  async function shareFinder() {
+    saveFinder();
+    const link = finderLink();
+    if (!link) return;
+    try {
+      if (navigator.share) await navigator.share({ title: 'Trackly', url: link });
+      else { await navigator.clipboard.writeText(link); toast(t('copied')); }
+    } catch (e) { /* closed */ }
+  }
+  function printFinder() {
+    const svg = $('#finder-qr').innerHTML;
+    const w = window.open('', '_blank');
+    if (!w) return;
+    w.document.write('<!doctype html><meta charset="utf-8"><title>Trackly</title><style>body{font-family:system-ui,sans-serif;display:flex;justify-content:center;padding:10mm}' +
+      '.tag{width:60mm;border:0.4mm solid #222;border-radius:4mm;padding:5mm;text-align:center}.tag svg{width:44mm;height:44mm}' +
+      'h1{font-size:5mm;margin:0 0 2mm}p{font-size:3mm;margin:2mm 0 0;line-height:1.4}</style><div class="tag"><h1>Found this bag?</h1>' + svg +
+      '<p>Scan to contact the owner.<br>سکانی بکە بۆ پەیوەندی بە خاوەنەکەی · امسح للتواصل مع صاحبها</p></div><script>onload=()=>print()<\/script>');
+    w.document.close();
+  }
+
+  // =====================================================================
+  // HOME SCREEN — the app icon's badge (lost mode / low battery), the tab title, and the
+  // long-press shortcuts from manifest.json (?go=bag | find | pharmacy | activity)
+  // =====================================================================
+  let badgeOn = null;
+  function updateBadge(tr, loc) {
+    const lost = tr.mode === 'lost', low = loc && typeof loc.battery === 'number' && loc.battery <= CFG.lowBatteryPercent;
+    const on = !!(lost || low);
+    document.title = 'Trackly · ' + (tr.name || tr.device_code) + (loc && typeof loc.battery === 'number' ? ' · ' + loc.battery + '%' : '');
+    if (on === badgeOn || !navigator.setAppBadge) return;
+    badgeOn = on;
+    (on ? navigator.setAppBadge(1) : navigator.clearAppBadge()).catch(() => {});
+  }
+  function takeShortcut() {
+    const go = new URLSearchParams(location.search).get('go');
+    if (!go || !state.tracker) return;
+    history.replaceState(null, '', location.pathname + location.hash);
+    setTimeout(() => {
+      if (go === 'find') openFind();
+      else if (go === 'pharmacy') findOpenPharmacy();
+      else if (go === 'activity') switchTab('history');
+      else centerOnBag();
+    }, 700);
   }
 
   // =====================================================================
@@ -1755,7 +2239,7 @@
     if (tags.shop) return 'shop';
     if (/^(pharmacy|hospital|clinic|doctors|dentist)$/.test(a)) return 'health';
     if (/^(bank|atm|bureau_de_change)$/.test(a)) return 'money';
-    if (a === 'fuel') return 'fuel';
+    if (a === 'fuel' || a === 'charging_station') return 'fuel';
     if (a === 'place_of_worship') return 'worship';
     if (/^(school|university|college|kindergarten)$/.test(a)) return 'edu';
     if (/^(hotel|guest_house|hostel)$/.test(tt)) return 'hotel';
@@ -1788,7 +2272,7 @@
     }
     return null;
   }
-  const PLACE_FILTER = '["name"]["amenity"~"^(restaurant|cafe|fast_food|ice_cream|food_court|pharmacy|hospital|clinic|doctors|dentist|bank|atm|bureau_de_change|fuel|place_of_worship|school|university|college|kindergarten|police|post_office|cinema|marketplace)$"]';
+  const PLACE_FILTER = '["name"]["amenity"~"^(restaurant|cafe|fast_food|ice_cream|food_court|pharmacy|hospital|clinic|doctors|dentist|bank|atm|bureau_de_change|fuel|charging_station|place_of_worship|school|university|college|kindergarten|police|post_office|cinema|marketplace)$"]';
   function placesQuery(area, limit) {
     return '[out:json][timeout:20];(' +
       'nwr' + PLACE_FILTER + area + ';' +
@@ -1936,6 +2420,12 @@
   function renderPlacesBar() {
     const bar = $('#places-bar');
     bar.innerHTML = '';
+    const ph = document.createElement('button');
+    ph.type = 'button'; ph.className = 'pchip on pchip-go'; ph.dataset.action = 'open-pharmacy';
+    ph.style.setProperty('--c', PLACE_GROUPS.health.color);
+    ph.innerHTML = placeIcon('health') + '<span></span>';
+    ph.querySelector('span').textContent = t('ph_btn');
+    bar.appendChild(ph);
     Object.keys(PLACE_GROUPS).filter((g) => g !== 'other').forEach((g) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -1986,14 +2476,15 @@
     };
     const addr = [p.tags['addr:street'], p.tags['addr:housenumber']].filter(Boolean).join(' ');
     row('address', addr);
-    row('open_hours', p.tags.opening_hours);
+    const openSt = openNow(p.tags.opening_hours);
+    row('open_hours', p.tags.opening_hours && (p.tags.opening_hours + (openSt === true ? ' · ' + t('open_now') : openSt === false ? ' · ' + t('closed_now') : '')));
     const phone = p.tags.phone || p.tags['contact:phone'];
     row('phone', phone, phone ? 'tel:' + phone.replace(/\s/g, '') : null);
     const loc = state.recent[0];
     if (loc) row('from_bag', fmtDistance(distanceM(loc, p)));
     box.querySelector('[data-pa="zone"]').textContent = t('zone_here');
     box.querySelector('[data-pa="go"]').textContent = t('directions');
-    box.querySelector('[data-pa="go"]').addEventListener('click', () => window.open('https://www.google.com/maps/dir/?api=1&destination=' + p.lat + ',' + p.lng, '_blank', 'noopener'));
+    box.querySelector('[data-pa="go"]').addEventListener('click', () => openNavMenu(p.lat, p.lng));
     box.querySelector('[data-pa="zone"]').addEventListener('click', () => {
       map.m.closePopup();
       switchTab('zones');
@@ -2850,6 +3341,10 @@
       .gte('created_at', since).order('created_at', { ascending: true }).limit(20000);
     const pts = data || [];
     const box = $('#week-card');
+    Object.assign(act.bag, bagActivity(pts));
+    renderActivity();
+    await loadCams();
+    $('#week-drives').textContent = String(findDrives(pts).length);
     if (pts.length < 2) { box.hidden = true; return; }
     // distance: skip GPS jitter (< 15 m) and impossible jumps (> 150 km/h)
     let m = 0;
@@ -3063,6 +3558,17 @@
       else if (a === 'pick-style') pickStyle(el.dataset.style);
       else if (a === 'toggle-path') togglePath();
       else if (a === 'toggle-cams') toggleCams();
+      else if (a === 'toggle-cam-sound') toggleCamSound();
+      else if (a === 'toggle-steps') toggleSteps();
+      else if (a === 'steps-resume') resumeSteps();
+      else if (a === 'open-pharmacy') findOpenPharmacy();
+      else if (a === 'nav-go') navGo(el.dataset.app);
+      else if (a === 'close-nav') closeModal($('#nav-menu'));
+      else if (a === 'close-trip') closeModal($('#trip-view'));
+      else if (a === 'finder-qr') showFinderQr();
+      else if (a === 'finder-share') shareFinder();
+      else if (a === 'finder-print') printFinder();
+      else if (a === 'close-finder') closeModal($('#finder-view'));
       else if (a === 'replay') toggleReplay();
       else if (a === 'directions') openDirections();
       else if (a === 'zone-me') locateMe(false, true);
@@ -3156,7 +3662,7 @@
     window.addEventListener('online', () => { net(); if (state.tracker) selectTracker(state.tracker.id); });
     let hiddenAt = 0;
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (document.hidden) { hiddenAt = Date.now(); if (act.today) savePhoneSteps(); return; }
       if (state.tracker && !$('#view-app').hidden && Date.now() - hiddenAt > 20000) selectTracker(state.tracker.id);
       else renderMapPanel();
     });
@@ -3166,6 +3672,12 @@
     window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
     $$('[data-kind-icon]').forEach((el) => { el.innerHTML = kindIcon(el.dataset.kindIcon); });
     bindEvents();
+    document.addEventListener('pointerdown', unlockAudio, { passive: true });
+    const num = (id, key) => $(id).addEventListener('change', (e) => { const v = e.target.value.trim(); if (v) localStorage.setItem(key, String(Math.round(Number(v)))); else localStorage.removeItem(key); syncSettings(); renderStepsSettings(); renderActivity(); });
+    num('#act-weight', 'trackly-weight'); num('#act-goal', 'trackly-goal');
+    ['#finder-phone', '#finder-msg'].forEach((id) => $(id).addEventListener('change', saveFinder));
+    renderStepsSettings(); renderCamSound(); renderFinder();
+    if (stepsOn()) startSteps(false);
     $('#backend-state').textContent = CFG.fakeBackend ? t('backend_test') : t('backend_real');
     $('#backend-switch').setAttribute('aria-checked', String(!CFG.fakeBackend));
     applyLang();
@@ -3181,6 +3693,7 @@
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
     countVisit();
     route().then(() => {
+      takeShortcut();
       // left-behind needs the phone's location: start it quietly if the user already allowed it
       if (leftBehindOn() && navigator.permissions && state.tracker) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') locateMe(false); }).catch(() => {});
     }).catch((e) => { reportError(e); showView('view-auth'); toast(t('err_generic')); });
