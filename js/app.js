@@ -170,7 +170,8 @@
 
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
     places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', goal: 'trackly-goal',
-    finder: 'trackly-finder', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
+    car: 'trackly-car', reminders: 'trackly-reminders', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -203,6 +204,7 @@
     if (s.cams != null) { cams.on = s.cams !== '0'; if (map.m) renderCams(); }
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
     renderStepsSettings(); renderCamSound(); renderFinder();
+    renderVoice(); renderSmartSwitches(); renderTraffic(); drawCar(); renderReminders();
     if (stepsOn()) startSteps(false);
   }
 
@@ -451,6 +453,7 @@
     map.m.on('dragstart', () => { if (!state.zoneEdit) { state.followBag = false; updateCenterBtn(); } });
     // while adding a safe zone, a tap on the map moves the pin there
     map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) { placePinAt(e.latlng); return; } if (tapCam(e.latlng)) return; tapMapPlace(e.latlng); });
+    map.m.on('contextmenu', (e) => { if (state.zoneEdit) return; showPlace({ id: 'pin', lat: e.latlng.lat, lng: e.latlng.lng, group: 'other', tags: { name: t('dropped_pin') } }); });
     map.zones = L.layerGroup().addTo(map.m);
     renderPlacesBar();
     let placesTimer = null;
@@ -576,7 +579,7 @@
     if ($('#btn-center')) $('#btn-center').classList.toggle('active', state.followBag);
     // the round 'Show my bag' button appears once you drag the map away
     const b = $('#back-to-bag');
-    if (b) b.hidden = state.followBag || state.tab !== 'map' || !!state.zoneEdit || !state.recent[0];
+    if (b) b.hidden = state.followBag || state.tab !== 'map' || !!state.zoneEdit || !state.recent[0] || rt.open;
   }
 
   // The phone's own location: blue dot, and "X km from you" on the card. forZone = move the zone pin there.
@@ -611,6 +614,8 @@
       checkLeftBehind();
       checkCamAhead(pos);
       onDriveFix(pos);
+      updateNav();
+      checkMyZones();
     };
     // a quick first answer (the phone's last known spot), then live updates as you move
     navigator.geolocation.getCurrentPosition(onFix, () => {}, { maximumAge: 60000, timeout: 8000 });
@@ -634,7 +639,7 @@
   function openDirections() {
     const loc = state.recent[0];
     if (!loc) return;
-    openNavMenu(loc.lat, loc.lng);
+    openRoute(loc, state.tracker.name || state.tracker.device_code);
   }
 
   // The safe zone a point is inside (smallest one first), or null
@@ -871,6 +876,9 @@
     const moving = !stale && !!prev && span >= 20 && recentEnough && distanceM(loc, prev) > 30;
     const kmh = moving ? Math.round(distanceM(loc, prev) / span * 3.6) : 0;
     const heading = moving ? bearing(prev, loc) : null;
+    checkNightMove(tr, loc, moving);
+    checkUnusual(tr, loc, moving, stale);
+    loadWeather();
 
     // texts
     $('#nosignal-note').hidden = !stale;
@@ -1063,9 +1071,11 @@
   }
   window.addEventListener('resize', () => moveTabInk());
   function doSwitchTab(tab) {
+    if (tab !== 'map' && rt.open && !rt.nav) { rt.open = false; rt.seq++; clearRouteLayer(); }
     state.tab = tab;
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-    $('#panel-map').hidden = tab !== 'map';
+    $('#panel-map').hidden = tab !== 'map' || rt.open;
+    $('#panel-route').hidden = tab !== 'map' || !rt.open;
     $('#panel-history').hidden = tab !== 'history';
     $('#panel-zones').hidden = tab !== 'zones';
     $('#panel-account').hidden = tab !== 'account';
@@ -1080,7 +1090,9 @@
     if (tab === 'history') { loadHistory(); loadWeekly(); }
     if (tab !== 'map') $('#speedo').hidden = true;
     if (tab === 'zones') drawZones(true);
-    if (tab === 'map') { state.followBag = true; drawZones(false); }
+    if (tab === 'map') { state.followBag = !rt.open; drawZones(false); }
+    if (tab === 'zones') renderReminders();
+    renderWeather();
     $('#map-controls').hidden = tab === 'history' || tab === 'account';
     if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); }
     renderPlaces();
@@ -1230,6 +1242,7 @@
   }
 
   function renderZones() {
+    renderReminders();
     const list = $('#zone-list');
     list.innerHTML = '';
     if (!state.zones.length) {
@@ -1585,6 +1598,7 @@
     cams.warned[key] = Date.now();
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
     beep('cam');
+    say((lang) => best.c[2] ? tIn(lang, 'v_cam_limit', { d: spokenDist(best.d, lang), n: best.c[2] }) : tIn(lang, 'v_cam', { d: spokenDist(best.d, lang) }));
     toast(best.c[2] ? t('cam_ahead_limit', { d: fmtDistance(best.d), n: best.c[2] }) : t('cam_ahead', { d: fmtDistance(best.d) }));
   }
 
@@ -1810,7 +1824,7 @@
       if (prev && c.accuracy < 60 && kmh >= 3) tr.m += distanceM(prev, p);
       tr.top = Math.max(tr.top, kmh);
       for (const cm of cams.list || []) if (Math.abs(cm[0] - p.lat) < 0.0008 && Math.abs(cm[1] - p.lng) < 0.001 && distanceM(p, { lat: cm[0], lng: cm[1] }) < 50) tr.cams.add(cm[0] + ',' + cm[1]);
-      if (kmh < 5) { if (!drive.slowSince) drive.slowSince = now; else if (now - drive.slowSince > 3 * 60e3) { tr.end = drive.slowSince; endTrip(); } }
+      if (kmh < 5) { if (!drive.slowSince) { drive.slowSince = now; drive.slowPos = p; } else if (now - drive.slowSince > 3 * 60e3) { tr.end = drive.slowSince; endTrip(); } }
       else { drive.slowSince = 0; tr.end = now; }
     }
     renderSpeedo(kmh, p, c.heading);
@@ -1828,7 +1842,7 @@
     el.classList.toggle('over', over);
     if (over) {
       if (drive.trip) drive.trip.over.add(ahead.key);
-      if (Date.now() - drive.overBeep > 8000) { drive.overBeep = Date.now(); beep('over'); if (navigator.vibrate) navigator.vibrate(250); }
+      if (Date.now() - drive.overBeep > 8000) { drive.overBeep = Date.now(); beep('over'); say('v_slow', { n: ahead.limit }); if (navigator.vibrate) navigator.vibrate(250); }
     }
     drive.hideTimer = setTimeout(() => { el.hidden = true; }, 15000);   // no news from the GPS: hide it
   }
@@ -1845,6 +1859,7 @@
     list.unshift(trip);
     try { localStorage.setItem('trackly-trips', JSON.stringify(list.slice(0, 30))); } catch (e) { /* full */ }
     showTrip(trip);
+    if (drive.slowPos) saveCar(drive.slowPos, true);
   }
   function showTrip(trip) {
     $('#trip-km').textContent = fmtDistance(trip.m);
@@ -2054,6 +2069,589 @@
   }
 
   // =====================================================================
+  // VOICE — spoken alerts and turn-by-turn directions, with the phone's own voices.
+  // Phones rarely have a Kurdish voice: then the Arabic voice reads the Arabic text (or English).
+  // =====================================================================
+  const voiceOn = () => localStorage.getItem('trackly-voice') !== '0';
+  let voiceReady = false;
+  function tIn(lang, key, vars) { const cur = state.lang; state.lang = lang; try { return t(key, vars); } finally { state.lang = cur; } }
+  function pickVoice() {
+    const vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+    const find = (re) => vs.find((v) => re.test(v.lang));
+    const order = state.lang === 'ckb' ? [['ckb', /^(ckb|ku)/i], ['ar', /^ar/i]] : state.lang === 'ar' ? [['ar', /^ar/i]] : [];
+    for (const [lang, re] of order) { const v = find(re); if (v) return { v, lang }; }
+    return { v: find(/^en/i) || null, lang: 'en' };
+  }
+  function spokenDist(m, lang) {
+    if (m >= 1000) return tIn(lang, 'v_km', { n: (Math.round(m / 100) / 10).toString() });
+    return tIn(lang, 'v_m', { n: m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10) });
+  }
+  // say('v_key', vars) or say((lang) => text)
+  function say(what, vars, force) {
+    if ((!voiceOn() && !force) || !window.speechSynthesis) return;
+    const { v, lang } = pickVoice();
+    const u = new SpeechSynthesisUtterance(typeof what === 'function' ? what(lang) : tIn(lang, what, vars));
+    if (v) { u.voice = v; u.lang = v.lang; }
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  }
+  function unlockVoice() {           // iPhone: speech only works after it was started from a tap once
+    if (voiceReady || !window.speechSynthesis) return;
+    voiceReady = true;
+    try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch (e) { /* no voice */ }
+  }
+  function toggleVoice() {
+    localStorage.setItem('trackly-voice', voiceOn() ? '0' : '1');
+    syncSettings(); renderVoice();
+    if (voiceOn()) say('v_test', null, true);
+    toast(voiceOn() ? t('voice_on') : t('voice_off'));
+  }
+  function renderVoice() { if ($('#btn-voice')) $('#btn-voice').setAttribute('aria-checked', String(voiceOn())); }
+
+  // =====================================================================
+  // ROUTES — directions inside Trackly (free OpenStreetMap routing): every way there,
+  // shortest first, by car, on foot or by bike; then turn-by-turn with voice and re-routing
+  // =====================================================================
+  const ROUTER = 'https://routing.openstreetmap.de/';
+  const ROUTE_MODES = { car: 'routed-car/route/v1/driving/', foot: 'routed-foot/route/v1/foot/', bike: 'routed-bike/route/v1/bike/' };
+  const ROUTE_COLORS = ['#2F7BF6', '#8B5CF6', '#F97316', '#64748B'];
+  const rt = { open: false, to: null, mode: 'car', list: [], sel: 0, layer: null, nav: null, seq: 0, eta: {} };
+  const llOf = (c) => ({ lat: c[0], lng: c[1] });
+  const fmtSecs = (s) => fmtDuration(Math.max(1, Math.round(s / 60)));
+  async function getRoutes(from, to, mode, full) {
+    const url = ROUTER + ROUTE_MODES[mode] + from.lng.toFixed(6) + ',' + from.lat.toFixed(6) + ';' + to.lng.toFixed(6) + ',' + to.lat.toFixed(6) +
+      (full ? '?alternatives=3&steps=true&overview=full&geometries=geojson' : '?overview=false');
+    const ctrl = window.AbortController ? new AbortController() : null;
+    const timer = ctrl && setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const r = await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+      if (!r.ok) return null;
+      const j = await r.json();
+      if (j.code !== 'Ok') return [];
+      return j.routes.map((x) => ({ m: x.distance, s: x.duration,
+        coords: full ? x.geometry.coordinates.map((c) => [c[1], c[0]]) : null,
+        steps: full ? x.legs[0].steps.map((st) => ({ type: st.maneuver.type, mod: st.maneuver.modifier || '', exit: st.maneuver.exit,
+          name: st.name || st.ref || '', loc: [st.maneuver.location[1], st.maneuver.location[0]] })) : null }));
+    } catch (e) { return null; } finally { clearTimeout(timer); }
+  }
+  function routeFrom() { return state.me || state.recent[0] || null; }
+  function waitForMe(ms) {
+    return new Promise((res) => { const t0 = Date.now(); const iv = setInterval(() => { if (state.me || Date.now() - t0 > ms) { clearInterval(iv); res(); } }, 250); });
+  }
+  // "12 min by car · 50 min walking · 4.3 km from you" on a place card
+  async function fillEta(el, to) {
+    const from = routeFrom();
+    if (!from) { el.textContent = '—'; return; }
+    const key = [from.lat.toFixed(3), from.lng.toFixed(3), to.lat.toFixed(4), to.lng.toFixed(4)].join(',');
+    let c = rt.eta[key];
+    if (!c) {
+      el.textContent = '…';
+      const [car, foot] = await Promise.all([getRoutes(from, to, 'car', false), getRoutes(from, to, 'foot', false)]);
+      c = { car: car && car[0], foot: foot && foot[0] };
+      if (car && foot) rt.eta[key] = c;
+    }
+    const parts = [];
+    if (c.car) parts.push(t('by_car', { t: fmtSecs(c.car.s) }));
+    if (c.foot && c.foot.s < 3 * 3600) parts.push(t('on_foot', { t: fmtSecs(c.foot.s) }));
+    const any = c.car || c.foot;
+    el.textContent = any ? parts.join(' · ') + ' · ' + fmtDistance(any.m) + ' ' + (state.me ? t('from_you_short') : t('from_bag_short')) : '—';
+  }
+  async function openRoute(to, name, mode) {
+    map.m.closePopup();
+    if (state.tab !== 'map') switchTab('map');
+    rt.to = { lat: to.lat, lng: to.lng, name: name || t('dropped_pin') };
+    rt.open = true;
+    state.followBag = false; updateCenterBtn();
+    $('#rp-to').textContent = rt.to.name;
+    $('#panel-map').hidden = true;
+    $('#panel-route').hidden = false;
+    $('#panel-route').classList.remove('navigating');
+    if (!state.me && navigator.geolocation && window.isSecureContext) { locateMe(false); await waitForMe(4000); }
+    const from = routeFrom();
+    rt.mode = mode || (from && distanceM(from, to) < 1200 ? 'foot' : (localStorage.getItem('trackly-route-mode') || 'car'));
+    loadRoutes();
+  }
+  function setRouteMode(m) { rt.mode = m; if (m !== 'foot') localStorage.setItem('trackly-route-mode', m); loadRoutes(); }
+  async function loadRoutes() {
+    $$('#rp-modes [data-mode]').forEach((b) => b.classList.toggle('active', b.dataset.mode === rt.mode));
+    $('#rp-from').textContent = state.me ? t('route_from_me') : t('route_from_bag');
+    const list = $('#rp-list');
+    const note = (txt) => { list.innerHTML = ''; const li = document.createElement('li'); li.className = 'rp-note'; li.textContent = txt; list.appendChild(li); };
+    note(t('route_loading'));
+    $('#rp-start').disabled = true;
+    clearRouteLayer();
+    const from = routeFrom();
+    if (!from) { note(t('no_location')); return; }
+    if (distanceM(from, rt.to) < 25) { note(t('with_you')); return; }
+    const seq = ++rt.seq;
+    const routes = await getRoutes(from, rt.to, rt.mode, true);
+    if (seq !== rt.seq || !rt.open) return;
+    if (!routes) { note(t('err_offline')); return; }
+    if (!routes.length) { note(t('route_none')); return; }
+    routes.sort((a, b) => a.m - b.m);                         // the shortest way first
+    const fastest = routes.reduce((a, b) => (b.s < a.s ? b : a));
+    routes.forEach((r, i) => {
+      r.tag = routes.length === 1 ? 'route_best' : i === 0 ? (r === fastest ? 'route_short_fast' : 'route_shortest')
+        : r === fastest ? 'route_fastest' : i === routes.length - 1 ? 'route_longest' : 'route_other';
+    });
+    rt.list = routes; rt.sel = 0;
+    renderRouteList();
+    drawRoutes(true);
+    $('#rp-start').disabled = false;
+  }
+  function renderRouteList() {
+    const list = $('#rp-list');
+    list.innerHTML = '';
+    const arrive = (s) => clockTime(new Date(Date.now() + s * 1000).toISOString());
+    rt.list.forEach((r, i) => {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'rp-opt' + (i === rt.sel ? ' on' : '');
+      b.style.setProperty('--c', ROUTE_COLORS[i] || ROUTE_COLORS[3]);
+      b.innerHTML = '<span class="rp-dot"></span><span class="rp-txt"><strong></strong><span></span></span><span class="rp-time"><strong></strong><span></span></span>';
+      b.querySelector('.rp-txt strong').textContent = t(r.tag);
+      b.querySelector('.rp-txt span').textContent = fmtDistance(r.m) + (i ? ' · +' + fmtDistance(r.m - rt.list[0].m) : '');
+      b.querySelector('.rp-time strong').textContent = fmtSecs(r.s);
+      b.querySelector('.rp-time span').textContent = t('arrive_at', { t: arrive(r.s) });
+      b.addEventListener('click', () => { rt.sel = i; renderRouteList(); drawRoutes(false); });
+      li.appendChild(b);
+      list.appendChild(li);
+    });
+  }
+  function clearRouteLayer() { if (rt.layer) { map.m.removeLayer(rt.layer); rt.layer = null; } }
+  function drawRoutes(fit) {
+    clearRouteLayer();
+    const g = L.layerGroup();
+    const dash = rt.mode === 'foot' ? '1 9' : null;
+    rt.list.forEach((r, i) => {
+      if (i === rt.sel || (rt.nav && i !== rt.sel)) return;
+      L.polyline(r.coords, { color: isDark() ? '#5b6474' : '#9aa3b2', weight: 6, opacity: 0.85, lineCap: 'round', dashArray: dash })
+        .on('click', () => { rt.sel = i; renderRouteList(); drawRoutes(false); }).addTo(g);
+    });
+    const r = rt.list[rt.sel];
+    if (r) {
+      L.polyline(r.coords, { color: '#ffffff', weight: 11, opacity: 0.95, lineCap: 'round', interactive: false }).addTo(g);
+      L.polyline(r.coords, { color: ROUTE_COLORS[rt.sel] || ROUTE_COLORS[0], weight: 6.5, lineCap: 'round', lineJoin: 'round', dashArray: dash, interactive: false }).addTo(g);
+      L.marker([rt.to.lat, rt.to.lng], { keyboard: false, interactive: false, icon: L.divIcon({ className: '', iconSize: [34, 42], iconAnchor: [17, 40], html: '<div class="search-pin"></div>' }) }).addTo(g);
+    }
+    rt.layer = g.addTo(map.m);
+    if (fit && rt.list.length) {
+      const b = L.latLngBounds([]);
+      rt.list.forEach((x) => b.extend(L.latLngBounds(x.coords)));
+      map.m.fitBounds(b, { paddingTopLeft: [32, 140], paddingBottomRight: [32, coverH() + 24], maxZoom: 17 });
+    }
+  }
+  function closeRoute() {
+    stopNav();
+    rt.open = false; rt.list = []; rt.seq++;
+    clearRouteLayer();
+    $('#panel-route').hidden = true;
+    $('#panel-map').hidden = state.tab !== 'map';
+    state.followBag = true;
+    renderMapPanel();
+  }
+  // ---- turn-by-turn ----
+  function projOnSeg(p, a, b) {
+    const kx = 111320 * Math.cos(p.lat * Math.PI / 180), ky = 110540;
+    const ax = (a.lng - p.lng) * kx, ay = (a.lat - p.lat) * ky, bx = (b.lng - p.lng) * kx, by = (b.lat - p.lat) * ky;
+    const dx = bx - ax, dy = by - ay, len = dx * dx + dy * dy;
+    const u = len ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len)) : 0;
+    return { d: Math.hypot(ax + u * dx, ay + u * dy), u };
+  }
+  function navAct(st, lang) {
+    const L1 = (k, v) => tIn(lang, k, v);
+    if (st.type === 'arrive') return L1('nav_arrive');
+    let a;
+    if (/roundabout|rotary/.test(st.type)) a = st.exit ? L1('nav_round', { n: st.exit }) : L1('nav_round_any');
+    else if (st.type === 'depart') a = L1('nav_depart');
+    else if (st.mod === 'uturn') a = L1('nav_uturn');
+    else if (/fork|ramp/.test(st.type)) a = L1(/left/.test(st.mod) ? 'nav_keep_left' : /right/.test(st.mod) ? 'nav_keep_right' : 'nav_straight');
+    else if (st.type === 'merge') a = L1('nav_merge');
+    else if (!st.mod || st.mod === 'straight') a = L1('nav_straight');
+    else a = L1('nav_' + st.mod.replace(' ', '_'));
+    return st.name ? L1('nav_onto', { a, road: st.name }) : a;
+  }
+  function navRotation(st) {
+    if (st.type === 'arrive') return null;
+    return { 'sharp left': -135, left: -90, 'slight left': -45, straight: 0, 'slight right': 45, right: 90, 'sharp right': 135, uturn: 180 }[st.mod] || 0;
+  }
+  async function startNav(quiet) {
+    const r = rt.list[rt.sel];
+    if (!r) return;
+    unlockAudio(); unlockVoice();
+    if (!state.me) { locateMe(false); toast(t('nav_need_gps')); }
+    // how far along the route each point and each turn is
+    const cum = [0];
+    for (let i = 1; i < r.coords.length; i++) cum.push(cum[i - 1] + distanceM(llOf(r.coords[i - 1]), llOf(r.coords[i])));
+    r.cum = cum; r.len = cum[cum.length - 1] || r.m;
+    r.stepAt = r.steps.map((st) => {
+      let bi = 0, bd = Infinity;
+      r.coords.forEach((c, i) => { const d = Math.abs(c[0] - st.loc[0]) + Math.abs(c[1] - st.loc[1]); if (d < bd) { bd = d; bi = i; } });
+      return cum[bi];
+    });
+    rt.list = [r]; rt.sel = 0;
+    rt.nav = { r, said: {}, off: 0, idx: 0, rerouteAt: rt.nav ? rt.nav.rerouteAt : 0 };
+    $('#panel-route').classList.add('navigating');
+    $('#nav-banner').hidden = false;
+    drawRoutes(false);
+    if (navigator.wakeLock && !rt.wake) navigator.wakeLock.request('screen').then((w) => { rt.wake = w; }).catch(() => {});
+    if (!quiet) say((lang) => tIn(lang, 'v_start', { d: spokenDist(r.m, lang), t: fmtSecs(r.s) }));
+    updateNav();
+  }
+  function stopNav() {
+    if (!rt.nav) return;
+    rt.nav = null;
+    $('#nav-banner').hidden = true;
+    $('#panel-route').classList.remove('navigating');
+    if (rt.wake) { rt.wake.release().catch(() => {}); rt.wake = null; }
+  }
+  function updateNav() {
+    const nav = rt.nav;
+    if (!nav) return;
+    const r = nav.r;
+    const remainAll = (prog) => Math.max(0, r.len - prog);
+    if (!state.me) { $('#nav-dist').textContent = '…'; $('#nav-text').textContent = t('nav_need_gps'); return; }
+    const me = state.me;
+    // where am I on the route? (search near the last place, so a road that comes back doesn't confuse it)
+    let best = nav.idx, bd = Infinity, bu = 0;
+    for (let i = Math.max(0, nav.idx - 10); i < Math.min(r.coords.length - 1, nav.idx + 600); i++) {
+      const p = projOnSeg(me, llOf(r.coords[i]), llOf(r.coords[i + 1]));
+      if (p.d < bd) { bd = p.d; best = i; bu = p.u; }
+    }
+    const offLimit = (rt.mode === 'car' ? 45 : 30) + Math.min(me.acc || 0, 40);
+    if (bd > offLimit) { if (++nav.off >= 3) reroute(); } else nav.off = 0;
+    nav.idx = best;
+    const prog = r.cum[best] + bu * ((r.cum[best + 1] || r.cum[best]) - r.cum[best]);
+    const left = remainAll(prog);
+    if (left < 25) { say('nav_arrive'); toast(t('nav_arrive')); stopNav(); closeRoute(); return; }
+    let k = r.stepAt.findIndex((a, i) => i > 0 && a > prog + 5);
+    if (k < 0) k = r.steps.length - 1;
+    const st = r.steps[k], toTurn = Math.max(0, r.stepAt[k] - prog);
+    $('#nav-dist').textContent = fmtDistance(toTurn);
+    $('#nav-text').textContent = navAct(st, state.lang);
+    const rot = navRotation(st);
+    $('#nav-icon').innerHTML = rot === null ? '<svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>'
+      : (/roundabout|rotary/.test(st.type) ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="4"/><path d="M12 10V3M9 6l3-3 3 3M12 18v3"/></svg>'
+        : '<svg viewBox="0 0 24 24" style="transform:rotate(' + rot + 'deg)"><path d="M12 20V5M6 11l6-6 6 6"/></svg>');
+    const secsLeft = r.s * left / r.len;
+    $('#rp-left').textContent = fmtSecs(secsLeft) + ' · ' + fmtDistance(left) + ' · ' + t('arrive_at', { t: clockTime(new Date(Date.now() + secsLeft * 1000).toISOString()) });
+    // voice: once well before the turn, once right at it
+    const far = rt.mode === 'car' ? 400 : 80, near = rt.mode === 'car' ? 70 : 20;
+    if (toTurn <= near && !nav.said[k + 'n']) { nav.said[k + 'n'] = nav.said[k + 'f'] = 1; say((lang) => navAct(st, lang)); }
+    else if (toTurn <= far && toTurn > near * 1.5 && !nav.said[k + 'f']) { nav.said[k + 'f'] = 1; say((lang) => tIn(lang, 'v_in', { d: spokenDist(toTurn, lang), a: navAct(st, lang) })); }
+    // keep me in the free part of the map, above the card
+    const z = Math.max(map.m.getZoom(), rt.mode === 'car' ? 16 : 17);
+    const pt = map.m.project([me.lat, me.lng], z).add([0, Math.min(coverH() / 2 - 60, 220)]);
+    map.m.setView(map.m.unproject(pt, z), z, { animate: true });
+  }
+  async function reroute() {
+    const nav = rt.nav;
+    if (!nav || nav.busy || Date.now() - (nav.rerouteAt || 0) < 15000 || !state.me) return;
+    nav.busy = true; nav.rerouteAt = Date.now();
+    say('v_reroute');
+    const routes = await getRoutes(state.me, rt.to, rt.mode, true);
+    if (!rt.nav) return;
+    nav.busy = false;
+    if (!routes || !routes.length) return;
+    routes.sort((a, b) => a.m - b.m);
+    rt.list = routes; rt.sel = 0;
+    startNav(true);
+  }
+
+  // =====================================================================
+  // MY CAR — save where you parked (or it saves itself when a drive ends), then walk back
+  // =====================================================================
+  const CAR_SVG = '<svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg>';
+  function carSpot() { try { return JSON.parse(localStorage.getItem('trackly-car')); } catch (e) { return null; } }
+  function drawCar() {
+    if (!map.m) return;
+    if (map.car) { map.m.removeLayer(map.car); map.car = null; }
+    const c = carSpot();
+    if (!c) return;
+    map.car = L.marker([c.lat, c.lng], { keyboard: false, zIndexOffset: 900, icon: L.divIcon({ className: '', iconSize: [36, 36], iconAnchor: [18, 18], html: '<div class="car-pin">' + CAR_SVG + '</div>' }) })
+      .on('click', showCar).addTo(map.m);
+  }
+  function saveCar(p, auto) {
+    localStorage.setItem('trackly-car', JSON.stringify({ lat: +p.lat.toFixed(6), lng: +p.lng.toFixed(6), at: new Date().toISOString() }));
+    syncSettings(); drawCar();
+    toast(auto ? t('car_saved_auto') : t('car_saved'));
+  }
+  async function carAction() {
+    if (carSpot()) { showCar(); return; }
+    if (!state.me) { locateMe(false); await waitForMe(8000); }
+    if (!state.me) { toast(t('toast_no_gps')); return; }
+    saveCar(state.me, false);
+  }
+  function showCar() {
+    const c = carSpot();
+    if (!c) return;
+    const box = document.createElement('div');
+    box.className = 'bi';
+    box.innerHTML = '<div class="pl-head"><span class="place-dot big" style="--c:#0F766E">' + CAR_SVG + '</span><div><strong class="bi-title"></strong><span class="pl-type"></span></div></div>' +
+      '<div class="bi-actions"><button type="button" class="btn btn-secondary" data-c="clear"></button><button type="button" class="btn btn-primary" data-c="go"></button></div>';
+    box.querySelector('.bi-title').textContent = t('car_title');
+    box.querySelector('.pl-type').textContent = t('car_parked', { t: relTime((Date.now() - new Date(c.at)) / 1000) }) + (state.me ? ' · ' + fmtDistance(distanceM(state.me, c)) : '');
+    box.querySelector('[data-c="clear"]').textContent = t('car_clear');
+    box.querySelector('[data-c="go"]').textContent = t('car_go');
+    box.querySelector('[data-c="go"]').addEventListener('click', () => openRoute(c, t('car_title'), 'foot'));
+    box.querySelector('[data-c="clear"]').addEventListener('click', () => { localStorage.removeItem('trackly-car'); syncSettings(); map.m.closePopup(); drawCar(); toast(t('car_cleared')); });
+    state.followBag = false; updateCenterBtn();
+    map.m.setView([c.lat, c.lng], Math.max(map.m.getZoom(), 16));
+    L.popup({ className: 'bag-popup', maxWidth: 280, offset: [0, -14], autoPanPaddingTopLeft: [16, 130] }).setLatLng([c.lat, c.lng]).setContent(box).openOn(map.m);
+  }
+
+  // =====================================================================
+  // REMINDERS — "When I leave Home: take the charger". Fires when this phone (while Trackly is open)
+  // or the bag leaves / arrives at the safe zone.
+  // =====================================================================
+  function reminders() { try { return JSON.parse(localStorage.getItem('trackly-reminders')) || []; } catch (e) { return []; } }
+  function saveReminders(list) { localStorage.setItem('trackly-reminders', JSON.stringify(list.slice(0, 40))); syncSettings(); renderReminders(); }
+  function renderReminders() {
+    const ul = $('#rem-list');
+    if (!ul) return;
+    ul.innerHTML = '';
+    const list = reminders().filter((r) => state.zones.some((z) => z.id === r.z));
+    if (!list.length) { const li = document.createElement('li'); li.className = 'muted small rem-empty'; li.textContent = t('rem_empty'); ul.appendChild(li); return; }
+    for (const r of list) {
+      const z = state.zones.find((x) => x.id === r.z);
+      const li = document.createElement('li');
+      li.className = 'rem-item';
+      li.innerHTML = '<span class="rem-ic">' + kindIcon(z.kind) + '</span><span class="rem-txt"><strong></strong><span></span></span><button type="button" class="icon-btn small" aria-label="Delete"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
+      li.querySelector('strong').textContent = r.text;
+      li.querySelector('.rem-txt span').textContent = t(r.when === 'leave' ? 'rem_when_leave' : 'rem_when_arrive', { z: z.name });
+      li.querySelector('button').addEventListener('click', () => saveReminders(reminders().filter((x) => x.id !== r.id)));
+      ul.appendChild(li);
+    }
+  }
+  function openReminderForm() {
+    if (!state.zones.length) { toast(t('rem_need_zone')); return; }
+    const sel = $('#rem-zone');
+    sel.innerHTML = '';
+    for (const z of state.zones) { const o = document.createElement('option'); o.value = z.id; o.textContent = z.name; sel.appendChild(o); }
+    $('#rem-text').value = '';
+    $$('#rem-when .seg').forEach((b) => b.classList.toggle('active', b.dataset.when === 'leave'));
+    $('#rem-view').hidden = false;
+    setTimeout(() => $('#rem-text').focus(), 250);
+  }
+  function submitReminder(e) {
+    e.preventDefault();
+    const text = $('#rem-text').value.trim();
+    if (!text) { $('#rem-text').focus(); return; }
+    const when = ($('#rem-when .seg.active') || {}).dataset.when || 'leave';
+    saveReminders(reminders().concat({ id: Date.now().toString(36), z: $('#rem-zone').value, when, text: text.slice(0, 80) }));
+    closeModal($('#rem-view'));
+    toast(t('rem_saved'));
+  }
+  const remFired = {};
+  function fireReminders(zone, when) {
+    for (const r of reminders()) {
+      if (r.z !== zone.id || r.when !== when) continue;
+      const k = r.id + when;
+      if (remFired[k] && Date.now() - remFired[k] < 30 * 60e3) continue;     // the phone and the bag both crossing: once
+      remFired[k] = Date.now();
+      addAlert('reminder', t('rem_alert', { z: zone.name, x: r.text }));
+      say((lang) => tIn(lang, 'v_reminder', { x: r.text }));
+    }
+  }
+  let meZones = null;
+  function checkMyZones() {
+    if (!state.me || !state.zones.length) return;
+    const first = !meZones;
+    if (first) meZones = {};
+    for (const z of state.zones) {
+      const d = distanceM(state.me, z), was = meZones[z.id];
+      if (first || was === undefined) { meZones[z.id] = d <= z.radius_m; continue; }
+      if (was && d > z.radius_m + 30) { meZones[z.id] = false; fireReminders(z, 'leave'); }
+      else if (!was && d <= z.radius_m) { meZones[z.id] = true; fireReminders(z, 'arrive'); }
+    }
+  }
+
+  // =====================================================================
+  // SMART ALERTS (while Trackly is open or in the background)
+  // 1. Night guard: the bag moves at night and isn't with you → "Is this you?"; no answer in 2 min → lost mode
+  // 2. Unusual place: the bag stays somewhere it has never been in the last 30 days
+  // =====================================================================
+  const nightOn = () => localStorage.getItem('trackly-night-guard') !== '0';
+  const unusualOn = () => localStorage.getItem('trackly-unusual') !== '0';
+  const ng = { okUntil: 0, tick: null };
+  function checkNightMove(tr, loc, moving) {
+    if (!nightOn() || tr.mode === 'lost' || !moving || !$('#night-view').hidden || Date.now() < ng.okUntil) return;
+    const h = new Date().getHours();
+    if (h >= 6 && h < 23) return;
+    if (state.me && distanceM(state.me, loc) < 150) return;          // it's with you
+    ng.okUntil = Date.now() + 10 * 60e3;
+    let left = 120;
+    const show = () => { $('#night-count').textContent = Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'); };
+    $('#night-text').textContent = t('night_q', { b: tr.name || tr.device_code });
+    show();
+    $('#night-view').hidden = false;
+    addAlert('night', t('night_alert', { b: tr.name || tr.device_code }));
+    beep('over'); say('v_night');
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+    clearInterval(ng.tick);
+    ng.tick = setInterval(() => { left--; show(); if (left <= 0) nightAnswer(false, true); }, 1000);
+  }
+  async function nightAnswer(isMe, auto) {
+    clearInterval(ng.tick);
+    closeModal($('#night-view'));
+    if (isMe) { ng.okUntil = Date.now() + 3 * 3600e3; toast(t('night_ok')); return; }
+    ng.okUntil = Date.now() + 3600e3;
+    if (await setMode('lost')) toast(auto ? t('night_auto') : t('night_lost'));
+  }
+  const usual = { list: null, days: 0, for: null, loading: false };
+  async function loadUsual() {
+    const tr = state.tracker;
+    if (!tr || usual.loading) return;
+    const key = 'trackly-usual-' + tr.id;
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem(key)); } catch (e) { /* none */ }
+    if (c && Date.now() - c.at < 12 * 3600e3) { Object.assign(usual, { list: c.list, days: c.days, for: tr.id }); return; }
+    usual.loading = true;
+    try {
+      const since = new Date(Date.now() - 30 * 86400e3).toISOString();
+      const { data } = await sb.from('locations').select('lat, lng, created_at').eq('tracker_id', tr.id).gte('created_at', since)
+        .order('created_at', { ascending: true }).limit(20000);
+      const pts = data || [];
+      const until = Date.now() - 12 * 3600e3;           // the last 12 hours don't count: today's new place must not "learn" itself
+      const list = [];
+      for (const s of findStops(pts.filter((p) => new Date(p.created_at).getTime() < until))) if (!list.some((x) => distanceM(x, s) < 150)) list.push({ lat: s.lat, lng: s.lng });
+      const days = new Set(pts.map((p) => new Date(p.created_at).toDateString())).size;
+      Object.assign(usual, { list, days, for: tr.id });
+      try { localStorage.setItem(key, JSON.stringify({ at: Date.now(), list, days })); } catch (e) { /* full */ }
+    } finally { usual.loading = false; }
+  }
+  function checkUnusual(tr, loc, moving, stale) {
+    if (!unusualOn() || moving || stale) return;
+    if (usual.for !== tr.id) { loadUsual(); return; }
+    if (!usual.list || usual.days < 5) return;                   // still learning your places
+    let since = new Date(loc.created_at).getTime();
+    for (const p of state.recent) { if (distanceM(p, loc) > 80) break; since = new Date(p.created_at).getTime(); }
+    if (Date.now() - since < 10 * 60e3) return;                  // there for 10 min+
+    if (zoneAt(loc) || usual.list.some((u) => distanceM(u, loc) < 300)) return;
+    const k = tr.id + ':' + loc.lat.toFixed(3) + ',' + loc.lng.toFixed(3);
+    let done = [];
+    try { done = JSON.parse(localStorage.getItem('trackly-unusual-done')) || []; } catch (e) { /* none */ }
+    if (done.includes(k)) return;
+    localStorage.setItem('trackly-unusual-done', JSON.stringify(done.concat(k).slice(-50)));
+    addAlert('unusual', t('alert_unusual', { b: tr.name || tr.device_code, p: $('#bag-area').textContent }));
+  }
+  function renderSmartSwitches() {
+    if ($('#night-switch')) $('#night-switch').setAttribute('aria-checked', String(nightOn()));
+    if ($('#unusual-switch')) $('#unusual-switch').setAttribute('aria-checked', String(unusualOn()));
+  }
+  function toggleSmart(key, on) { localStorage.setItem(key, on() ? '0' : '1'); syncSettings(); renderSmartSwitches(); }
+
+  // =====================================================================
+  // WEATHER — temperature on the map, with heat and dust-storm warnings (Open-Meteo, free)
+  // =====================================================================
+  const WX_ICON = {
+    sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    moon: '<svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>',
+    cloud: '<svg viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 18z"/></svg>',
+    rain: '<svg viewBox="0 0 24 24"><path d="M7 14h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 14zM8 17l-1 3M12 17l-1 3M16 17l-1 3"/></svg>',
+    snow: '<svg viewBox="0 0 24 24"><path d="M7 14h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 14zM8 18h.01M12 20h.01M16 18h.01"/></svg>',
+    storm: '<svg viewBox="0 0 24 24"><path d="M7 14h10a4 4 0 0 0 .5-8 6 6 0 0 0-11.6 1.5A3.3 3.3 0 0 0 7 14zM13 14l-2 4h3l-2 4"/></svg>',
+    fog: '<svg viewBox="0 0 24 24"><path d="M4 10h16M3 14h18M6 18h12M7 6h10"/></svg>',
+    dust: '<svg viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7"/></svg>'
+  };
+  const wx = { at: 0, key: '', data: null };
+  function wxKind(code, day) {
+    if (code <= 1) return day ? 'sun' : 'moon';
+    if (code <= 3) return 'cloud';
+    if (code === 45 || code === 48) return 'fog';
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+    if (code >= 95) return 'storm';
+    return 'cloud';
+  }
+  function wxWarn() {
+    const c = wx.data && wx.data.f.current, a = wx.data && wx.data.a && wx.data.a.current;
+    if (!c) return '';
+    if (c.temperature_2m >= 45) return 'heat';
+    if (a && ((a.dust || 0) >= 150 || (a.us_aqi || 0) >= 150)) return 'dust';
+    return '';
+  }
+  async function loadWeather() {
+    const p = state.recent[0] || state.me || { lat: ERBIL[0], lng: ERBIL[1] };
+    const key = p.lat.toFixed(1) + ',' + p.lng.toFixed(1);
+    if (wx.key === key && Date.now() - wx.at < 30 * 60e3) return;
+    wx.key = key; wx.at = Date.now();
+    const q = 'latitude=' + p.lat.toFixed(3) + '&longitude=' + p.lng.toFixed(3);
+    const get = (url) => {
+      const ctrl = window.AbortController ? new AbortController() : null;
+      const timer = ctrl && setTimeout(() => ctrl.abort(), 20000);
+      return fetch(url, ctrl ? { signal: ctrl.signal } : {}).then((r) => r.json()).finally(() => clearTimeout(timer));
+    };
+    try {
+      const f = await get('https://api.open-meteo.com/v1/forecast?' + q + '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day,relative_humidity_2m' +
+        '&hourly=temperature_2m,weather_code,is_day&forecast_hours=13&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto');
+      if (!f || !f.current) throw new Error('no weather');
+      wx.data = { f, a: wx.key === key && wx.data ? wx.data.a : null };
+      renderWeather();
+    } catch (e) { wx.at = 0; wx.key = ''; setTimeout(loadWeather, 8000); return; }   // slow or offline: try again soon
+    // air quality (dust) separately: it must never hold up the temperature
+    get('https://air-quality-api.open-meteo.com/v1/air-quality?' + q + '&current=dust,pm10,us_aqi').then((a) => { if (wx.data && a && a.current) { wx.data.a = a; renderWeather(); } }).catch(() => {});
+  }
+  function renderWeather() {
+    const el = $('#wx-pill');
+    const c = wx.data && wx.data.f.current;
+    el.hidden = !c || state.tab !== 'map' || !!state.zoneEdit;
+    if (!c) return;
+    const warn = wxWarn();
+    el.className = 'wx-pill' + (warn ? ' warn-' + warn : '');
+    el.innerHTML = WX_ICON[warn === 'dust' ? 'dust' : wxKind(c.weather_code, c.is_day)] + '<span></span>';
+    el.querySelector('span').textContent = Math.round(c.temperature_2m) + '°';
+    el.setAttribute('aria-label', t('wx_title') + ' ' + Math.round(c.temperature_2m) + '°');
+  }
+  function showWeather() {
+    if (!wx.data) return;
+    const { f, a } = wx.data, c = f.current, aq = a && a.current;
+    const kind = wxKind(c.weather_code, c.is_day), warn = wxWarn();
+    $('#wx-big').innerHTML = WX_ICON[kind];
+    $('#wx-temp').textContent = Math.round(c.temperature_2m) + '°';
+    $('#wx-desc').textContent = t('wx_' + kind) + (f.daily ? ' · ' + Math.round(f.daily.temperature_2m_max[0]) + '° / ' + Math.round(f.daily.temperature_2m_min[0]) + '°' : '');
+    $('#wx-feels').textContent = Math.round(c.apparent_temperature) + '°';
+    $('#wx-wind').textContent = Math.round(c.wind_speed_10m) + ' ' + t('kmh');
+    $('#wx-hum').textContent = Math.round(c.relative_humidity_2m) + '%';
+    const aqi = aq ? aq.us_aqi : null;
+    $('#wx-air').textContent = aqi == null ? '—' : aqi + ' · ' + t(aqi <= 50 ? 'air_good' : aqi <= 100 ? 'air_ok' : aqi <= 150 ? 'air_sens' : 'air_bad');
+    $('#wx-warn').hidden = !warn;
+    if (warn) $('#wx-warn').textContent = t(warn === 'heat' ? 'wx_heat' : 'wx_dust');
+    const hours = $('#wx-hours');
+    hours.innerHTML = '';
+    for (let i = 1; i < f.hourly.time.length; i += 2) {
+      const d = document.createElement('div');
+      d.innerHTML = '<span></span>' + WX_ICON[wxKind(f.hourly.weather_code[i], f.hourly.is_day[i])] + '<strong></strong>';
+      d.querySelector('span').textContent = f.hourly.time[i].slice(11, 16);
+      d.querySelector('strong').textContent = Math.round(f.hourly.temperature_2m[i]) + '°';
+      hours.appendChild(d);
+    }
+    $('#wx-view').hidden = false;
+  }
+
+  // =====================================================================
+  // TRAFFIC — live traffic colours on the roads (TomTom, free key: docs/traffic-setup.md)
+  // =====================================================================
+  const trafficOn = () => localStorage.getItem('trackly-traffic') === '1';
+  function renderTraffic() {
+    const row = $('#traffic-row');
+    if (row) row.hidden = !CFG.tomtomKey;
+    if ($('#btn-traffic')) $('#btn-traffic').setAttribute('aria-checked', String(trafficOn()));
+    if (!map.m || !CFG.tomtomKey) return;
+    if (!map.m.getPane('traffic')) { map.m.createPane('traffic'); map.m.getPane('traffic').style.zIndex = 250; map.m.getPane('traffic').style.pointerEvents = 'none'; }
+    if (trafficOn() && !map.traffic) {
+      map.traffic = L.tileLayer('https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?tileSize=256&key=' + encodeURIComponent(CFG.tomtomKey),
+        { pane: 'traffic', maxZoom: 22, maxNativeZoom: 22, opacity: 0.85, attribution: '&copy; TomTom' }).addTo(map.m);
+    } else if (!trafficOn() && map.traffic) { map.m.removeLayer(map.traffic); map.traffic = null; }
+  }
+  function toggleTraffic() {
+    localStorage.setItem('trackly-traffic', trafficOn() ? '0' : '1');
+    syncSettings(); renderTraffic();
+    toast(trafficOn() ? t('traffic_on') : t('traffic_off'));
+  }
+
+  // =====================================================================
   // PROFESSIONAL MAP STYLE — OpenFreeMap "Liberty" (free, no key), tuned like Google Maps:
   //  - every kind of place with its own icon (hospital, pharmacy, school, mosque, café, bank, fuel…)
   //  - labels never overlap and fade in/out while zooming (done by the map engine)
@@ -2065,17 +2663,20 @@
     health: ['hospital', 'pharmacy', 'doctors', 'dentist', 'clinic', 'veterinary'],
     food: ['restaurant', 'fast_food', 'cafe', 'bar', 'ice_cream', 'beer', 'pub', 'bakery'],
     shop: ['shop', 'grocery', 'clothing_store', 'alcohol_shop', 'butcher', 'jewelry', 'mobile_phone', 'shoes', 'furniture', 'florist',
-      'gift', 'hardware', 'music', 'toys', 'electronics', 'supermarket', 'mall', 'department_store', 'laundry', 'car', 'bicycle'],
+      'gift', 'hardware', 'music', 'toys', 'electronics', 'supermarket', 'mall', 'department_store', 'laundry', 'bicycle'],
     money: ['bank', 'atm', 'bureau_de_change'],
     fuel: ['fuel', 'charging_station'],
     worship: ['place_of_worship'],
     edu: ['school', 'college', 'kindergarten', 'library', 'university'],
     hotel: ['lodging'],
-    park: ['park', 'garden', 'playground', 'pitch', 'stadium', 'sports_centre', 'swimming', 'golf']
+    park: ['park', 'garden', 'playground', 'pitch', 'stadium', 'sports_centre', 'swimming', 'golf'],
+    car: ['car', 'car_repair', 'car_wash', 'car_rental', 'parking'],
+    gov: ['town_hall', 'police', 'post', 'fire_station', 'embassy', 'courthouse', 'prison'],
+    fun: ['cinema', 'theatre', 'attraction', 'museum', 'art_gallery', 'zoo', 'theme_park', 'castle', 'monument', 'aquarium']
   };
   const POI_TEXT = {   // label colour per type (darker on the light map, lighter on the dark one)
-    light: { health: '#be185d', food: '#c2410c', shop: '#6d28d9', money: '#0369a1', fuel: '#475569', worship: '#4d7c0f', edu: '#a16207', hotel: '#4338ca', park: '#15803d', other: '#57534e' },
-    dark: { health: '#f9a8d4', food: '#fdba74', shop: '#c4b5fd', money: '#7dd3fc', fuel: '#cbd5e1', worship: '#bef264', edu: '#fde68a', hotel: '#a5b4fc', park: '#86efac', other: '#d6d3d1' }
+    light: { health: '#be185d', food: '#c2410c', shop: '#6d28d9', money: '#0369a1', fuel: '#475569', worship: '#4d7c0f', edu: '#a16207', hotel: '#4338ca', park: '#15803d', car: '#0f766e', gov: '#334155', fun: '#a21caf', other: '#57534e' },
+    dark: { health: '#f9a8d4', food: '#fdba74', shop: '#c4b5fd', money: '#7dd3fc', fuel: '#cbd5e1', worship: '#bef264', edu: '#fde68a', hotel: '#a5b4fc', park: '#86efac', car: '#5eead4', gov: '#cbd5e1', fun: '#f0abfc', other: '#d6d3d1' }
   };
   const POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20', 'trackly-major'];
   const poiBaseFilters = {};
@@ -2152,7 +2753,7 @@
     if (!libertyBase) libertyBase = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
     const s = JSON.parse(JSON.stringify(libertyBase));
     const name = nameExpr();
-    const minz = { poi_r1: 14, poi_r7: 15, poi_r20: 16 };
+    const minz = { poi_r1: 13, poi_r7: 14, poi_r20: 15 };
     if (dark) darkify(s);   // recolour first, so the bright place-label colours below stay bright
     s.layers.forEach((l) => {
       const tf = l.layout && l.layout['text-field'];
@@ -2230,12 +2831,18 @@
     edu: { color: '#CA8A04', icon: 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5' },
     hotel: { color: '#6366F1', icon: 'M3 18V7M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5M7 10a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z' },
     park: { color: '#16A34A', icon: 'M12 3l5 7h-3l4 6H6l4-6H7zM12 16v5' },
+    car: { color: '#0F766E', icon: 'M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3z' },
+    gov: { color: '#334155', icon: 'M3 21h18M4 10h16M6 10v9M10 10v9M14 10v9M18 10v9M12 3l8 5H4z' },
+    fun: { color: '#C026D3', icon: 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z' },
     other: { color: '#64748B', icon: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z' }
   };
   const placeIcon = (g) => '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + PLACE_GROUPS[g].icon + '"/></svg>';
   function placeGroup(tags) {
     const a = tags.amenity, tt = tags.tourism, l = tags.leisure;
     if (/^(restaurant|cafe|fast_food|ice_cream|food_court|bar)$/.test(a)) return 'food';
+    if (/^(car|car_repair|tyres|car_parts)$/.test(tags.shop) || /^(car_wash|car_rental|parking)$/.test(a)) return 'car';
+    if (/^(police|townhall|courthouse|embassy|post_office|fire_station)$/.test(a) || tags.office === 'government') return 'gov';
+    if (/^(cinema|theatre|arts_centre)$/.test(a) || /^(attraction|museum|theme_park|zoo|gallery)$/.test(tt) || /^(water_park|amusement_arcade)$/.test(l)) return 'fun';
     if (tags.shop) return 'shop';
     if (/^(pharmacy|hospital|clinic|doctors|dentist)$/.test(a)) return 'health';
     if (/^(bank|atm|bureau_de_change)$/.test(a)) return 'money';
@@ -2272,12 +2879,12 @@
     }
     return null;
   }
-  const PLACE_FILTER = '["name"]["amenity"~"^(restaurant|cafe|fast_food|ice_cream|food_court|pharmacy|hospital|clinic|doctors|dentist|bank|atm|bureau_de_change|fuel|charging_station|place_of_worship|school|university|college|kindergarten|police|post_office|cinema|marketplace)$"]';
+  const PLACE_FILTER = '["name"]["amenity"~"^(restaurant|cafe|fast_food|ice_cream|food_court|pharmacy|hospital|clinic|doctors|dentist|bank|atm|bureau_de_change|fuel|charging_station|place_of_worship|school|university|college|kindergarten|police|post_office|cinema|marketplace|car_wash|car_rental|townhall|courthouse|embassy|fire_station|theatre|arts_centre)$"]';
   function placesQuery(area, limit) {
     return '[out:json][timeout:20];(' +
       'nwr' + PLACE_FILTER + area + ';' +
       'nwr["name"]["shop"]' + area + ';' +
-      'nwr["name"]["tourism"~"^(hotel|guest_house|hostel|attraction|museum|viewpoint)$"]' + area + ';' +
+      'nwr["name"]["tourism"~"^(hotel|guest_house|hostel|attraction|museum|viewpoint|theme_park|zoo|gallery)$"]' + area + ';' +
       'nwr["name"]["leisure"~"^(park|garden|stadium|sports_centre|fitness_centre)$"]' + area + ';' +
       ');out center ' + limit + ';';
   }
@@ -2296,6 +2903,9 @@
     if (/^(pharmacy|hospital|clinic|doctors|dentist)$/.test(c) || /^(pharmacy|hospital|clinic|doctors|dentist)$/.test(s)) return 'health';
     if (/^(bank|atm|bureau_de_change)$/.test(s) || c === 'bank') return 'money';
     if (c === 'fuel' || s === 'fuel') return 'fuel';
+    if (/^(car|car_repair|car_wash|car_rental|parking)$/.test(c) || /^(car|car_repair|car_wash|car_rental)$/.test(s)) return 'car';
+    if (/^(town_hall|police|post|fire_station|embassy|courthouse|prison)$/.test(c)) return 'gov';
+    if (/^(cinema|theatre|attraction|museum|art_gallery|zoo|theme_park|castle|monument|aquarium)$/.test(c)) return 'fun';
     if (c === 'place_of_worship' || s === 'place_of_worship' || /^(mosque|church)$/.test(s)) return 'worship';
     if (/^(school|college|university|kindergarten)$/.test(c) || /^(school|college|university|kindergarten)$/.test(s)) return 'edu';
     if (c === 'lodging' || /^(hotel|guest_house|hostel)$/.test(s)) return 'hotel';
@@ -2482,9 +3092,13 @@
     row('phone', phone, phone ? 'tel:' + phone.replace(/\s/g, '') : null);
     const loc = state.recent[0];
     if (loc) row('from_bag', fmtDistance(distanceM(loc, p)));
+    const etaDt = document.createElement('dt'), etaDd = document.createElement('dd');
+    etaDt.textContent = t('travel_time'); etaDd.className = 'eta';
+    dl.append(etaDt, etaDd);
+    fillEta(etaDd, p);
     box.querySelector('[data-pa="zone"]').textContent = t('zone_here');
     box.querySelector('[data-pa="go"]').textContent = t('directions');
-    box.querySelector('[data-pa="go"]').addEventListener('click', () => openNavMenu(p.lat, p.lng));
+    box.querySelector('[data-pa="go"]').addEventListener('click', () => openRoute(p, placeName(p.tags)));
     box.querySelector('[data-pa="zone"]').addEventListener('click', () => {
       map.m.closePopup();
       switchTab('zones');
@@ -2559,7 +3173,9 @@
         return { name: parts[0], sub: parts.slice(1, 3).join(',').trim(), lat: +row.lat, lng: +row.lon, group: null };
       }));
       list.innerHTML = '';
-      if (!all.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_results'); list.appendChild(li); return; }
+      const addLink = () => { const li = document.createElement('li'); li.className = 'empty add-place'; const a = document.createElement('a'); a.target = '_blank'; a.rel = 'noopener';
+        a.href = 'https://www.openstreetmap.org/note/new#map=18/' + c.lat.toFixed(5) + '/' + c.lng.toFixed(5); a.textContent = t('add_place'); li.appendChild(a); list.appendChild(li); };
+      if (!all.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_results'); list.appendChild(li); addLink(); return; }
       all.forEach((r) => {
         const li = document.createElement('li');
         const b = document.createElement('button');
@@ -2578,6 +3194,7 @@
         li.appendChild(b);
         list.appendChild(li);
       });
+      addLink();
     }, 350);
   }
 
@@ -2661,6 +3278,8 @@
     const bag = state.tracker.name || state.tracker.device_code;
     state.zones.filter((z) => z.enabled).forEach((z) => {
       const was = distanceM(prev, z) <= z.radius_m, now = distanceM(next, z) <= z.radius_m;
+      if (was && !now) fireReminders(z, 'leave');
+      if (!was && now) fireReminders(z, 'arrive');
       if (was && !now && (z.notify_on === 'leave' || z.notify_on === 'both')) addAlert('zone', t('alert_left', { b: bag, z: z.name }));
       if (!was && now && (z.notify_on === 'arrive' || z.notify_on === 'both')) addAlert('zone', t('alert_arrived', { b: bag, z: z.name }));
     });
@@ -3559,6 +4178,23 @@
       else if (a === 'toggle-path') togglePath();
       else if (a === 'toggle-cams') toggleCams();
       else if (a === 'toggle-cam-sound') toggleCamSound();
+      else if (a === 'toggle-voice') toggleVoice();
+      else if (a === 'toggle-traffic') toggleTraffic();
+      else if (a === 'toggle-night') toggleSmart('trackly-night-guard', nightOn);
+      else if (a === 'toggle-unusual') toggleSmart('trackly-unusual', unusualOn);
+      else if (a === 'route-mode') setRouteMode(el.dataset.mode);
+      else if (a === 'close-route') closeRoute();
+      else if (a === 'route-start') startNav(false);
+      else if (a === 'route-end') { stopNav(); closeRoute(); }
+      else if (a === 'route-other') { if (rt.to) openNavMenu(rt.to.lat, rt.to.lng); }
+      else if (a === 'car') carAction();
+      else if (a === 'add-reminder') openReminderForm();
+      else if (a === 'close-rem') closeModal($('#rem-view'));
+      else if (a === 'rem-when') $$('#rem-when .seg').forEach((b) => b.classList.toggle('active', b === el));
+      else if (a === 'night-me') nightAnswer(true);
+      else if (a === 'night-lost') nightAnswer(false);
+      else if (a === 'weather') showWeather();
+      else if (a === 'close-wx') closeModal($('#wx-view'));
       else if (a === 'toggle-steps') toggleSteps();
       else if (a === 'steps-resume') resumeSteps();
       else if (a === 'open-pharmacy') findOpenPharmacy();
@@ -3672,7 +4308,9 @@
     window.addEventListener('unhandledrejection', (e) => reportError(e.reason));
     $$('[data-kind-icon]').forEach((el) => { el.innerHTML = kindIcon(el.dataset.kindIcon); });
     bindEvents();
-    document.addEventListener('pointerdown', unlockAudio, { passive: true });
+    document.addEventListener('pointerdown', () => { unlockAudio(); unlockVoice(); }, { passive: true });
+    $('#rem-form').addEventListener('submit', submitReminder);
+    renderVoice(); renderSmartSwitches();
     const num = (id, key) => $(id).addEventListener('change', (e) => { const v = e.target.value.trim(); if (v) localStorage.setItem(key, String(Math.round(Number(v)))); else localStorage.removeItem(key); syncSettings(); renderStepsSettings(); renderActivity(); });
     num('#act-weight', 'trackly-weight'); num('#act-goal', 'trackly-goal');
     ['#finder-phone', '#finder-msg'].forEach((id) => $(id).addEventListener('change', saveFinder));
@@ -3685,6 +4323,7 @@
     const lastEmail = localStorage.getItem('trackly-last-email');
     if (lastEmail) $('#auth-email').value = lastEmail;
     initMap();
+    renderTraffic(); drawCar();
     map.m.on('move', syncEditCircle);
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     $('#google-btn').hidden = !CFG.googleLogin;

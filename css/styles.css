@@ -995,3 +995,85 @@ html[dir="rtl"] .speedo .cam-sign { right: auto; left: -10px; }
   .speedo.over { animation: none; }
   .act-ring .ring-fg, .act-bar i { transition: none; }
 }
+
+/* ===== Directions card ===== */
+.route-panel { gap: 12px; }
+.rp-head { align-items: center; }
+.rp-dest { min-width: 0; }
+.rp-dest .label { margin: 0; }
+.rp-dest h2 { margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rp-plan { display: flex; flex-direction: column; gap: 10px; }
+.rp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rp-note { padding: 14px; border-radius: 14px; background: var(--card-2); color: var(--text-2); font-size: 14px; text-align: center; }
+.rp-opt {
+  width: 100%; display: flex; align-items: center; gap: 12px; min-height: 60px; padding: 10px 14px; border-radius: 16px;
+  border: 1.5px solid var(--line); background: var(--card-2); color: var(--text); cursor: pointer; text-align: start; transition: border-color 0.2s ease, background 0.2s ease;
+}
+.rp-opt.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 10%, var(--card)); }
+.rp-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 25%, transparent); }
+.rp-txt { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.rp-txt strong { font-size: 15px; }
+.rp-txt span, .rp-time span { font-size: 12px; color: var(--text-2); }
+.rp-time { display: flex; flex-direction: column; align-items: flex-end; text-align: end; }
+.rp-time strong { font-size: 18px; color: var(--accent-strong); white-space: nowrap; }
+.rp-going { display: none; align-items: center; justify-content: space-between; gap: 12px; }
+.rp-left { font-size: 15px; }
+.route-panel.navigating .rp-plan { display: none; }
+.route-panel.navigating .rp-going { display: flex; }
+.nav-banner {
+  position: absolute; z-index: 600; left: 16px; right: 16px; top: calc(74px + var(--safe-top)); display: flex; align-items: center; gap: 14px;
+  padding: 14px 16px; border-radius: 20px; background: #1E6B4E; color: #fff; box-shadow: var(--shadow); animation: slide-up 0.25s ease both;
+}
+.nav-banner > div { display: flex; flex-direction: column; min-width: 0; }
+.nav-banner strong { font-size: 24px; line-height: 1.1; }
+.nav-banner span#nav-text { font-size: 15px; opacity: 0.95; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.nav-icon { width: 48px; height: 48px; flex: none; display: grid; place-items: center; border-radius: 14px; background: rgba(255, 255, 255, 0.16); }
+.nav-icon svg { width: 32px; height: 32px; stroke: #fff; stroke-width: 2.6; fill: none; }
+.nav-banner:not([hidden]) ~ .places-bar, .nav-banner:not([hidden]) ~ .wx-pill { display: none; }
+.eta { color: var(--accent-strong); font-weight: 600; }
+
+/* ===== Car, weather, reminders, night guard ===== */
+.car-pin { width: 36px; height: 36px; border-radius: 12px; background: #0F766E; color: #fff; display: grid; place-items: center; border: 2.5px solid #fff; box-shadow: var(--shadow-sm); }
+.car-pin svg { width: 22px; height: 22px; stroke: #fff; }
+.quick { grid-template-columns: repeat(5, 1fr); }
+.quick-btn { font-size: 11px; padding: 0 2px; text-align: center; }
+.wx-pill {
+  position: absolute; z-index: 500; right: 16px; top: calc(74px + var(--safe-top)); height: 36px; padding: 0 10px 0 6px; border-radius: 18px;
+  border: 1px solid var(--line); background: var(--glass); color: var(--text); display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  font-weight: 700; font-size: 13px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: var(--shadow-sm);
+}
+html[dir="rtl"] .wx-pill { right: auto; left: 16px; }
+.banner:not([hidden]) ~ .wx-pill { top: calc(130px + var(--safe-top)); }
+.wx-pill svg { width: 22px; height: 22px; color: #F59E0B; }
+.wx-pill.warn-heat { background: #DC2626; color: #fff; border-color: #DC2626; }
+.wx-pill.warn-dust { background: #B45309; color: #fff; border-color: #B45309; }
+.wx-pill.warn-heat svg, .wx-pill.warn-dust svg { color: #fff; }
+.wx-now { display: flex; align-items: center; gap: 16px; }
+.wx-big svg { width: 64px; height: 64px; color: #F59E0B; }
+.wx-now strong { font-size: 44px; font-weight: 700; line-height: 1; display: block; }
+.wx-now span { color: var(--text-2); }
+.wx-warn { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--danger-soft); color: var(--danger); font-weight: 600; font-size: 14px; }
+.wx-grid { grid-template-columns: repeat(4, 1fr); }
+.wx-grid strong { font-size: 15px; }
+.wx-hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.wx-hours div { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; border-radius: 12px; background: var(--card-2); font-size: 11px; color: var(--text-2); }
+.wx-hours svg { width: 22px; height: 22px; color: var(--accent-strong); }
+.wx-hours strong { color: var(--text); font-size: 13px; }
+.rem-section { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.rem-section h3 { margin: 0; font-size: 15px; }
+.rem-section p { margin: 0; }
+.rem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rem-item { display: flex; align-items: center; gap: 12px; padding: 10px 8px 10px 12px; border-radius: 14px; background: var(--card-2); }
+html[dir="rtl"] .rem-item { padding: 10px 12px 10px 8px; }
+.rem-ic svg { width: 22px; height: 22px; color: var(--accent-strong); }
+.rem-txt { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.rem-txt strong { font-size: 14px; }
+.rem-txt span { font-size: 12px; color: var(--text-2); }
+.rem-empty { list-style: none; }
+#rem-form select { width: 100%; }
+.night-card { align-items: stretch; text-align: center; }
+.night-card h2 { margin: 0; }
+.night-count { align-self: center; width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; font-size: 28px; font-weight: 700;
+  background: var(--danger-soft); color: var(--danger); font-variant-numeric: tabular-nums; animation: speedo-pulse 1s ease-in-out infinite; }
+.add-place a { color: var(--accent-strong); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .night-count, .nav-banner { animation: none; } }

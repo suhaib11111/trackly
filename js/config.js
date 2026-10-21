@@ -7,6 +7,8 @@ window.TRACKLY_CONFIG = {
   fakeBackend: (() => { try { return localStorage.getItem('trackly-backend') === 'test'; } catch (e) { return false; } })(),
   // Google sign-in: set to true after setting it up (docs/google-login.md)
   googleLogin: false,
+  // live traffic on the map: a free TomTom key (docs/traffic-setup.md). Empty = the Traffic switch is hidden
+  tomtomKey: '',
 
   // test mode only: the pretend tracker follows THIS phone's real GPS (needs https). false = pretend route in Erbil
   usePhoneGps: true,

@@ -206,6 +206,14 @@
         <span data-i18n="cam_sound">Warning sound</span>
         <button id="btn-cam-sound" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-cam-sound" data-i18n-aria="cam_sound" aria-label="Warning sound"></button>
       </div>
+      <div class="row-between picker-row">
+        <span data-i18n="voice">Voice alerts</span>
+        <button id="btn-voice" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-voice" data-i18n-aria="voice" aria-label="Voice alerts"></button>
+      </div>
+      <div id="traffic-row" class="row-between picker-row" hidden>
+        <span data-i18n="traffic">Live traffic</span>
+        <button id="btn-traffic" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-traffic" data-i18n-aria="traffic" aria-label="Live traffic"></button>
+      </div>
     </div>
 
     <div id="map-controls" class="map-controls">
@@ -266,6 +274,7 @@
           <button class="quick-btn" type="button" data-action="report" ><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg><span data-i18n="report_btn">Report</span></button>
           <button id="park-btn" class="quick-btn" type="button" data-action="park"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span data-i18n="park_btn">Park</span></button>
           <button class="quick-btn" type="button" data-action="find-sound"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span data-i18n="beep">Beep</span></button>
+          <button class="quick-btn" type="button" data-action="car"><svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg><span data-i18n="car_btn">My car</span></button>
         </div>
 
         <div id="lost-actions" class="actions" hidden>
@@ -273,6 +282,27 @@
           <button class="btn btn-primary" type="button" data-action="found" data-i18n="found">I found my bag</button>
         </div>
         <button id="lost-report" class="btn btn-ghost danger-text" type="button" data-action="report" data-i18n="report_btn_lost">Make a report for police</button>
+      </div>
+
+      <!-- Directions (replaces the bag card while open) -->
+      <div id="panel-route" class="panel route-panel" hidden>
+        <div class="row-between rp-head">
+          <div class="rp-dest"><span class="label" data-i18n="route_to">Directions to</span><h2 id="rp-to">—</h2></div>
+          <button class="icon-btn" type="button" data-action="close-route" data-i18n-aria="close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="rp-plan">
+          <div id="rp-modes" class="segmented small"><button type="button" class="seg" data-action="route-mode" data-mode="car" data-i18n="mode_car">Car</button><button type="button" class="seg" data-action="route-mode" data-mode="foot" data-i18n="mode_foot">Walk</button><button type="button" class="seg" data-action="route-mode" data-mode="bike" data-i18n="mode_bike">Bike</button></div>
+          <ul id="rp-list" class="rp-list"></ul>
+          <p id="rp-from" class="muted tiny"></p>
+          <div class="actions">
+            <button class="btn btn-secondary" type="button" data-action="route-other" data-i18n="route_other">Other app</button>
+            <button id="rp-start" class="btn btn-primary" type="button" data-action="route-start" data-i18n="route_start">Start</button>
+          </div>
+        </div>
+        <div class="rp-going">
+          <strong id="rp-left" class="rp-left"></strong>
+          <button class="btn btn-danger" type="button" data-action="route-end" data-i18n="route_end">End</button>
+        </div>
       </div>
 
       <!-- History tab -->
@@ -326,6 +356,12 @@
         <p class="muted small" data-i18n="zones_sub">Choose your own places. We’ll notify you when your bag leaves one of them.</p>
         <ul id="zone-list" class="zone-list"></ul>
         <button class="btn btn-dashed" type="button" data-action="add-zone" data-i18n="add_zone">Add a safe zone</button>
+        <section class="rem-section">
+          <h3 data-i18n="rem_title">Reminders</h3>
+          <p class="muted small" data-i18n="rem_sub">“When I leave Home: take the charger.” Works with your bag and with this phone.</p>
+          <ul id="rem-list" class="rem-list"></ul>
+          <button class="btn btn-secondary" type="button" data-action="add-reminder" data-i18n="rem_add">Add a reminder</button>
+        </section>
       </div>
 
       <!-- Zone editor -->
@@ -388,6 +424,14 @@
           <div class="row-between">
             <div><h3 data-i18n="behind_title">Left-behind alert</h3><p class="muted small" data-i18n="behind_sub">Warns you when you walk away from your bag (while Trackly is open).</p></div>
             <button id="behind-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="left-behind" data-i18n-aria="behind_title" aria-label="Left-behind alert"></button>
+          </div>
+          <div class="row-between">
+            <div><h3 data-i18n="night_title">Night guard</h3><p class="muted small" data-i18n="night_sub">If your bag moves at night without you, Trackly asks “Is this you?” and starts lost mode after 2 minutes with no answer.</p></div>
+            <button id="night-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-night" data-i18n-aria="night_title" aria-label="Night guard"></button>
+          </div>
+          <div class="row-between">
+            <div><h3 data-i18n="unusual_title">New-place alert</h3><p class="muted small" data-i18n="unusual_sub">Tells you when your bag stays somewhere it has never been before (Trackly learns your places over a few days).</p></div>
+            <button id="unusual-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-unusual" data-i18n-aria="unusual_title" aria-label="New-place alert"></button>
           </div>
         </section>
 
@@ -495,6 +539,8 @@
     </nav>
 
     <!-- back to the bag after dragging the map away -->
+    <div id="nav-banner" class="nav-banner" hidden role="status"><span id="nav-icon" class="nav-icon"></span><div><strong id="nav-dist"></strong><span id="nav-text"></span></div></div>
+    <button id="wx-pill" class="wx-pill" type="button" data-action="weather" hidden></button>
     <div id="speedo" class="speedo" hidden aria-live="off"><strong id="speedo-val">0</strong><span data-i18n="kmh">km/h</span><span id="speedo-limit" class="cam-sign small" hidden></span></div>
     <button id="back-to-bag" class="back-pill" type="button" data-action="center-bag" hidden><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg><span data-i18n="center_bag">Show my bag</span></button>
   </section>
@@ -636,6 +682,52 @@
       <button class="lang-opt" type="button" data-action="nav-go" data-app="waze"><span class="lang-flag nav-w">W</span><span><strong>Waze</strong></span></button>
       <button id="nav-apple" class="lang-opt" type="button" data-action="nav-go" data-app="apple"><span class="lang-flag nav-a">A</span><span><strong>Apple Maps</strong></span></button>
       <button class="btn btn-secondary btn-lg" type="button" data-action="close-nav" data-i18n="close">Close</button>
+    </div>
+  </div>
+
+  <!-- ============ REMINDER FORM ============ -->
+  <div id="rem-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rem-v-title">
+    <form id="rem-form" class="modal-card form" novalidate>
+      <h2 id="rem-v-title" data-i18n="rem_add">Add a reminder</h2>
+      <div id="rem-when" class="segmented small">
+        <button type="button" class="seg active" data-action="rem-when" data-when="leave" data-i18n="rem_leave">When I leave</button>
+        <button type="button" class="seg" data-action="rem-when" data-when="arrive" data-i18n="rem_arrive">When I arrive at</button>
+      </div>
+      <select id="rem-zone" aria-label="Zone"></select>
+      <label for="rem-text" data-i18n="rem_what">Remind me to</label>
+      <input id="rem-text" maxlength="80" data-i18n-ph="rem_ph" placeholder="take the charger" required>
+      <div class="actions">
+        <button class="btn btn-secondary" type="button" data-action="close-rem" data-i18n="cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit" data-i18n="save">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ NIGHT GUARD: IS THIS YOU? ============ -->
+  <div id="night-view" class="modal" hidden role="alertdialog" aria-modal="true" aria-labelledby="night-text">
+    <div class="modal-card night-card">
+      <div class="night-count" id="night-count">2:00</div>
+      <h2 id="night-text">Is this you?</h2>
+      <p class="muted small" data-i18n="night_hint">If you don’t answer, lost mode (live tracking) starts automatically.</p>
+      <button class="btn btn-primary btn-lg" type="button" data-action="night-me" data-i18n="night_yes">Yes, it’s me</button>
+      <button class="btn btn-danger btn-lg" type="button" data-action="night-lost" data-i18n="night_no">No — start live tracking</button>
+    </div>
+  </div>
+
+  <!-- ============ WEATHER ============ -->
+  <div id="wx-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="wx-temp">
+    <div class="modal-card">
+      <div class="wx-now"><span id="wx-big" class="wx-big"></span><div><strong id="wx-temp"></strong><span id="wx-desc"></span></div></div>
+      <p id="wx-warn" class="wx-warn" hidden></p>
+      <div class="week-grid wx-grid">
+        <div><strong id="wx-feels"></strong><span data-i18n="wx_feels">feels like</span></div>
+        <div><strong id="wx-wind"></strong><span data-i18n="wx_wind">wind</span></div>
+        <div><strong id="wx-hum"></strong><span data-i18n="wx_hum">humidity</span></div>
+        <div><strong id="wx-air"></strong><span data-i18n="wx_air">air quality</span></div>
+      </div>
+      <div id="wx-hours" class="wx-hours"></div>
+      <p class="muted tiny center">Open-Meteo</p>
+      <button class="btn btn-secondary btn-lg" type="button" data-action="close-wx" data-i18n="close">Close</button>
     </div>
   </div>
 
