@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.22';
+  const APP_VERSION = '2026.10.22b';
 
   // ---------- state ----------
   const state = {
@@ -70,6 +70,7 @@
   function toast(msg) {
     const el = $('#toast');
     el.textContent = msg;
+    el.classList.remove('has-action');
     el.hidden = false;
     requestAnimationFrame(() => el.classList.add('in'));   // pop in
     clearTimeout(toast._t);
@@ -175,7 +176,7 @@
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
     places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', goal: 'trackly-goal',
     finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
-    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', favs: 'trackly-favs', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -210,6 +211,7 @@
     renderStepsSettings(); renderCamSound(); renderFinder();
     renderVoice(); renderSmartSwitches(); renderTraffic(); drawCar(); renderReminders(); drawFavs();
     if (s.scheme) applyScheme(s.scheme, true);
+    if (s.size) applySize(s.size, true);
     if (stepsOn()) startSteps(false);
   }
 
@@ -610,7 +612,13 @@
     $('[data-action="locate-me"]').classList.add('active');
     if (meWatch !== null) return;
     const onFix = (pos) => {
-      state.me = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      const was = state.me;
+      const now = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      const h = pos.coords.heading;
+      if (h != null && !isNaN(h) && (pos.coords.speed || 0) > 0.7) now.heading = h;
+      else if (was && distanceM(was, now) > 8) now.heading = bearing(was, now);
+      else now.heading = was ? was.heading : null;
+      state.me = now;
       drawMe();
       if (meWaiting) {                            // first fix after a tap
         const w = meWaiting; meWaiting = null;
@@ -634,13 +642,33 @@
       $('[data-action="locate-me"]').classList.remove('active');
     }, { enableHighAccuracy: true, maximumAge: 5000 });
   }
+  // you on the map: a blue person pin that glides as you move, with an arrow for the way you're going
   function drawMe() {
-    if (!state.me) return;
-    const ll = [state.me.lat, state.me.lng];
+    if (!state.me || !map.m) return;
+    const ll = L.latLng(state.me.lat, state.me.lng);
+    const r = Math.min(state.me.acc || 30, 300);
     if (!map.meDot) {
-      map.meCircle = L.circle(ll, { radius: Math.min(state.me.acc, 300), weight: 0, fillColor: '#3B82F6', fillOpacity: 0.12, interactive: false }).addTo(map.m);
-      map.meDot = L.circleMarker(ll, { radius: 7, weight: 3, color: '#FFFFFF', fillColor: '#3B82F6', fillOpacity: 1, interactive: false }).addTo(map.m);
-    } else { map.meDot.setLatLng(ll); map.meCircle.setLatLng(ll).setRadius(Math.min(state.me.acc, 300)); }
+      map.meCircle = L.circle(ll, { radius: r, weight: 0, fillColor: '#3B82F6', fillOpacity: 0.12, interactive: false }).addTo(map.m);
+      map.meDot = L.marker(ll, { keyboard: false, zIndexOffset: 950, title: t('me_title'), icon: L.divIcon({ className: '', iconSize: [40, 40], iconAnchor: [20, 20],
+        html: '<div class="me-marker"><span class="me-heading" hidden></span><span class="me-core"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span></div>' }) }).on('click', showMeCard).addTo(map.m);
+    } else { moveMarker(map.meDot, ll); moveMarker(map.meCircle, ll); map.meCircle.setRadius(r); }
+    const el = map.meDot.getElement() && map.meDot.getElement().querySelector('.me-heading');
+    if (el) { el.hidden = state.me.heading == null; if (state.me.heading != null) el.style.transform = 'rotate(' + Math.round(state.me.heading) + 'deg)'; }
+  }
+  function showMeCard() {
+    if (!state.me) return;
+    const box = document.createElement('div');
+    box.className = 'bi';
+    box.innerHTML = '<div class="pl-head"><span class="place-dot big" style="--c:#3B82F6"><svg viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span><div><strong class="bi-title"></strong><span class="pl-type"></span></div></div>' +
+      '<div class="bi-actions"><button type="button" class="btn btn-secondary" data-m="car"></button><button type="button" class="btn btn-primary" data-m="both"></button></div>';
+    box.querySelector('.bi-title').textContent = t('me_title');
+    const loc = state.recent[0];
+    box.querySelector('.pl-type').textContent = '± ' + fmtDistance(state.me.acc || 0) + (loc ? ' · ' + (distanceM(state.me, loc) < 15 ? t('with_you') : t('me_bag', { d: fmtDistance(distanceM(state.me, loc)) })) : '');
+    box.querySelector('[data-m="car"]').textContent = t('me_park');
+    box.querySelector('[data-m="both"]').textContent = t('me_both');
+    box.querySelector('[data-m="car"]').addEventListener('click', () => { map.m.closePopup(); saveCar(state.me, false); });
+    box.querySelector('[data-m="both"]').addEventListener('click', () => { map.m.closePopup(); showMeAndBag(); });
+    L.popup({ className: 'bag-popup', maxWidth: 280, offset: [0, -14], autoPanPaddingTopLeft: [16, 130] }).setLatLng([state.me.lat, state.me.lng]).setContent(box).openOn(map.m);
   }
 
   function openDirections() {
@@ -855,6 +883,7 @@
       $('#battery-banner').hidden = true;
       if (map.marker) { map.m.removeLayer(map.marker); map.marker = null; }
       if (map.accuracy) { map.m.removeLayer(map.accuracy); map.accuracy = null; }
+      renderHealth(null);
       return;
     }
 
@@ -919,6 +948,7 @@
     // which safe zone it's in, and how far it is from you
     const inZone = zoneAt(loc);
     $('#bag-zone').hidden = !inZone;
+    renderHealth(loc, { lost, stale, age, battery, inZone, moving, kmh });
     if (inZone) $('#bag-zone').innerHTML = kindIcon(inZone.kind) + '<span></span>', $('#bag-zone span').textContent = t('at_zone', { z: inZone.name });
     const fromMe = state.me ? distanceM(state.me, loc) : null;
     $('#bag-distance').textContent = fromMe === null ? '' : ' · ' + (fromMe < 15 ? t('with_you') : t('from_you_dir', { d: fmtDistance(fromMe), dir: t('dir_' + compass(bearing(state.me, loc))) }));
@@ -2402,7 +2432,11 @@
     box.querySelector('[data-c="clear"]').textContent = t('car_clear');
     box.querySelector('[data-c="go"]').textContent = t('car_go');
     box.querySelector('[data-c="go"]').addEventListener('click', () => openRoute(c, t('car_title'), 'foot'));
-    box.querySelector('[data-c="clear"]').addEventListener('click', () => { localStorage.removeItem('trackly-car'); syncSettings(); map.m.closePopup(); drawCar(); toast(t('car_cleared')); });
+    box.querySelector('[data-c="clear"]').addEventListener('click', () => {
+      const old = localStorage.getItem('trackly-car');
+      localStorage.removeItem('trackly-car'); syncSettings(); map.m.closePopup(); drawCar();
+      toastUndo(t('car_cleared'), () => { localStorage.setItem('trackly-car', old); syncSettings(); drawCar(); });
+    });
     state.followBag = false; updateCenterBtn();
     map.m.setView([c.lat, c.lng], Math.max(map.m.getZoom(), 16));
     L.popup({ className: 'bag-popup', maxWidth: 280, offset: [0, -14], autoPanPaddingTopLeft: [16, 130] }).setLatLng([c.lat, c.lng]).setContent(box).openOn(map.m);
@@ -2427,7 +2461,7 @@
       li.innerHTML = '<span class="rem-ic">' + kindIcon(z.kind) + '</span><span class="rem-txt"><strong></strong><span></span></span><button type="button" class="icon-btn small" aria-label="Delete"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>';
       li.querySelector('strong').textContent = r.text;
       li.querySelector('.rem-txt span').textContent = t(r.when === 'leave' ? 'rem_when_leave' : 'rem_when_arrive', { z: z.name });
-      li.querySelector('button').addEventListener('click', () => saveReminders(reminders().filter((x) => x.id !== r.id)));
+      li.querySelector('button').addEventListener('click', () => { const before = reminders(); saveReminders(before.filter((x) => x.id !== r.id)); toastUndo(t('rem_deleted'), () => saveReminders(before)); });
       ul.appendChild(li);
     }
   }
@@ -2686,13 +2720,15 @@
   function recents() { try { return JSON.parse(localStorage.getItem('trackly-recent')) || []; } catch (e) { return []; } }
   function toggleFav(p, name) {
     const k = favKey(p);
-    let list = favs();
+    const before = favs();
+    let list = before.slice();
     const had = list.some((f) => f.k === k);
     if (had) list = list.filter((f) => f.k !== k);
     else list.unshift({ k, name: String(name || t('dropped_pin')).slice(0, 60), lat: +(+p.lat).toFixed(6), lng: +(+p.lng).toFixed(6), g: p.group || 'other' });
     localStorage.setItem('trackly-favs', JSON.stringify(list.slice(0, 60)));
     syncSettings(); drawFavs();
-    toast(had ? t('fav_removed') : t('fav_added'));
+    if (had) toastUndo(t('fav_removed'), () => { localStorage.setItem('trackly-favs', JSON.stringify(before)); syncSettings(); drawFavs(); });
+    else toast(t('fav_added'));
     return !had;
   }
   function drawFavs() {
@@ -2771,7 +2807,7 @@
     if (r.length) {
       const clear = document.createElement('button');
       clear.type = 'button'; clear.className = 'link-btn tiny-link'; clear.textContent = t('recent_clear');
-      clear.addEventListener('click', () => { localStorage.removeItem('trackly-recent'); renderSearchHome(); });
+      clear.addEventListener('click', () => { const old = localStorage.getItem('trackly-recent'); localStorage.removeItem('trackly-recent'); renderSearchHome(); toastUndo(t('recent_cleared'), () => { localStorage.setItem('trackly-recent', old); renderSearchHome(); }); });
       head(t('recent_title'), clear);
       r.forEach((x) => list.appendChild(searchItem(x, 'recent')));
     }
@@ -2803,6 +2839,92 @@
     if (!state.tracker || localStorage.getItem('trackly-seen-version') === APP_VERSION) return;
     localStorage.setItem('trackly-seen-version', APP_VERSION);
     setTimeout(() => { if ($('#view-app').hidden || !$('#nav-banner').hidden) return; $('#new-view').hidden = false; }, 1200);
+  }
+
+  // =====================================================================
+  // ONE-GLANCE STATUS on the bag card: "All good" / "Safe at Home" / "Battery low" / "No signal" / "Lost mode"
+  // =====================================================================
+  function renderHealth(loc, o) {
+    const el = $('#bag-health');
+    if (!el) return;
+    let level = 'ok', text;
+    if (!loc) { level = 'wait'; text = t('h_wait'); }
+    else if (o.lost) { level = 'bad'; text = t('h_lost'); }
+    else if (o.stale) { level = 'warn'; text = t('h_nosignal', { t: relTime(o.age) }); }
+    else if (o.battery !== null && o.battery <= CFG.lowBatteryPercent) { level = 'warn'; text = t('h_battery', { n: o.battery }); }
+    else if (o.moving && o.kmh >= 2) { level = 'move'; text = t('h_moving', { n: o.kmh }); }
+    else if (o.inZone) text = t('h_safe', { z: o.inZone.name });
+    else text = t('h_ok');
+    el.className = 'bag-health ' + level;
+    el.querySelector('span').textContent = text;
+  }
+
+  // =====================================================================
+  // UNDO — a short message with an Undo button after removing something
+  // =====================================================================
+  function hideToast() {
+    const el = $('#toast');
+    el.classList.remove('in');
+    setTimeout(() => { if (!el.classList.contains('in')) el.hidden = true; }, 220);
+  }
+  function toastUndo(msg, onUndo) {
+    toast(msg);
+    const el = $('#toast');
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'toast-undo'; b.textContent = t('undo');
+    b.addEventListener('click', () => { onUndo(); hideToast(); });
+    el.appendChild(b);
+    el.classList.add('has-action');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(hideToast, 6000);
+  }
+
+  // =====================================================================
+  // ALERTS BELL — every alert in one place (the server's and this phone's), with an unread count
+  // =====================================================================
+  let alertCache = [];
+  async function allAlerts() {
+    const server = CFG.fakeBackend ? null : await serverAlerts();
+    alertCache = (server || []).concat(alertList()).sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+    updateBell();
+    return alertCache;
+  }
+  function updateBell() {
+    const seen = Number(localStorage.getItem('trackly-alerts-seen')) || 0;
+    const n = alertCache.filter((a) => new Date(a.at).getTime() > seen).length;
+    const c = $('#bell-count');
+    if (!c) return;
+    c.hidden = !n;
+    c.textContent = n > 9 ? '9+' : String(n);
+    $('#bell-btn').setAttribute('aria-label', n ? t('alerts_n', { n }) : t('alerts'));
+  }
+  async function openAlerts() {
+    $('#alerts-view').hidden = false;
+    await renderAlerts($('#alerts-view-list'), 40);
+    localStorage.setItem('trackly-alerts-seen', String(Date.now()));
+    updateBell();
+  }
+
+  // =====================================================================
+  // TEXT SIZE — Normal, Large, Extra large (Account → Appearance)
+  // =====================================================================
+  const SIZES = ['normal', 'large', 'xl'];
+  function applySize(v, quiet) {
+    const s = SIZES.includes(v) ? v : 'normal';
+    localStorage.setItem('trackly-size', s);
+    if (s === 'normal') delete document.documentElement.dataset.size; else document.documentElement.dataset.size = s;
+    $$('#size-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.size === s));
+    if (!quiet) syncSettings();
+  }
+
+  // =====================================================================
+  // ACCOUNT — jump straight to a section
+  // =====================================================================
+  function accJump(id) {
+    const sec = document.getElementById(id);
+    if (!sec) return;
+    if (state.snap !== 'full') setSnap('full');
+    setTimeout(() => sec.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 260);
   }
 
   // =====================================================================
@@ -3454,13 +3576,13 @@
       return { kind: a.kind.startsWith('battery') ? 'battery' : (a.kind === 'moved' ? 'moved' : 'zone'), at: a.created_at, text: t(ALERT_TEXT[a.kind], { b, z: a.zone_name || '', n: a.battery }) };
     });
   }
-  async function renderAlerts() {
-    const ul = $('#alert-list');
+  async function renderAlerts(target, max) {
+    const ul = target || $('#alert-list');
     if (!ul) return;
-    const list = (!CFG.fakeBackend && (await serverAlerts())) || alertList();
+    const list = await allAlerts();   // the server's alerts and this phone's (reminders, new place, night guard…)
     ul.innerHTML = '';
     if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_alerts'); ul.appendChild(li); return; }
-    list.slice(0, 8).forEach((a) => {
+    list.slice(0, max || 8).forEach((a) => {
       const li = document.createElement('li');
       li.className = 'alert-item ' + a.kind;
       const strong = document.createElement('strong'); strong.textContent = a.text;
@@ -4332,6 +4454,10 @@
       else if (a === 'toggle-cam-sound') toggleCamSound();
       else if (a === 'toggle-voice') toggleVoice();
       else if (a === 'scheme') applyScheme(el.dataset.scheme);
+      else if (a === 'text-size') applySize(el.dataset.size);
+      else if (a === 'open-alerts') openAlerts();
+      else if (a === 'close-alerts') closeModal($('#alerts-view'));
+      else if (a === 'acc-jump') accJump(el.dataset.target);
       else if (a === 'reload-app') location.reload();
       else if (a === 'close-new') closeModal($('#new-view'));
       else if (a === 'toggle-traffic') toggleTraffic();
@@ -4405,6 +4531,8 @@
     $('#mfa-form').addEventListener('submit', submitMfa);
     $('#join-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const c = e.target.value.trim(); if (c) joinFamily(c); } });
     $('#map-search').addEventListener('input', onMapSearch);
+    // Enter opens the first result
+    $('#map-search').addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; e.preventDefault(); const first = $('#map-search-results li button'); if (first) first.click(); });
     $('#map-search').addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSearch(); });
     setupSheetDrag();
     setupPullToRefresh();
@@ -4440,6 +4568,9 @@
   function start() {
     applyTheme(localStorage.getItem('trackly-theme') || 'gold');
     applyScheme(schemePref(), true);
+    applySize(localStorage.getItem('trackly-size'), true);
+    // a tiny tap feel on the main buttons (Android)
+    document.addEventListener('click', (e) => { if (navigator.vibrate && e.target.closest('.tab, .fab, .quick-btn, .seg, .switch, .pchip')) navigator.vibrate(8); }, true);
     takeLinkAction();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open
@@ -4490,9 +4621,15 @@
     route().then(() => {
       takeShortcut();
       maybeWhatsNew();
+      if (state.user) renderAlerts();
       drawFavs();
       // left-behind needs the phone's location: start it quietly if the user already allowed it
-      if (leftBehindOn() && navigator.permissions && state.tracker) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') locateMe(false); }).catch(() => {});
+      // show you on the map from the start: right away if allowed, otherwise ask once
+      if (state.tracker) {
+        const askOnce = () => { if (!localStorage.getItem('trackly-asked-gps')) { localStorage.setItem('trackly-asked-gps', '1'); locateMe(false); } };
+        if (navigator.permissions) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') locateMe(false); else if (p.state === 'prompt') askOnce(); }).catch(askOnce);
+        else askOnce();
+      }
     }).catch((e) => { reportError(e); showView('view-auth'); toast(t('err_generic')); });
   }
 

@@ -10,7 +10,7 @@
   <meta name="apple-mobile-web-app-title" content="Trackly">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Trackly</title>
-  <script>try { var s = localStorage.getItem('trackly-scheme'), th = localStorage.getItem('trackly-theme'); if (s === 'light' || s === 'dark') document.documentElement.dataset.scheme = s; if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
+  <script>try { var s = localStorage.getItem('trackly-scheme'), th = localStorage.getItem('trackly-theme'), sz = localStorage.getItem('trackly-size'); if (sz === 'large' || sz === 'xl') document.documentElement.dataset.size = sz; if (s === 'light' || s === 'dark') document.documentElement.dataset.scheme = s; if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -150,6 +150,7 @@
         <select id="tracker-select" aria-label="Tracker"></select>
       </div>
       <span id="live-badge" class="live-badge" hidden><span class="dot"></span><span data-i18n="live">LIVE</span></span>
+      <button id="bell-btn" class="icon-btn pill bell-btn" type="button" data-action="open-alerts" data-i18n-aria="alerts" aria-label="Alerts"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span id="bell-count" class="bell-count" hidden></span></button>
       <button class="icon-btn pill" type="button" data-action="open-search" data-i18n-aria="search" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
       <button class="lang-btn pill-lang" type="button" data-action="lang" aria-label="Language">EN</button>
     </div>
@@ -240,6 +241,7 @@
           <div>
             <p id="lost-label" class="lost-label" hidden data-i18n="lost_on">Lost mode is on</p>
             <h2 id="bag-name">—</h2>
+            <p id="bag-health" class="bag-health wait"><i aria-hidden="true"></i><span></span></p>
             <p class="muted small"><span id="bag-area">—</span><span id="bag-distance"></span></p>
             <p id="bag-near" class="near" hidden></p>
             <p id="bag-zone" class="zone-chip" hidden></p>
@@ -402,8 +404,9 @@
       <div id="panel-account" class="panel" hidden>
         <h2 data-i18n="account">Account</h2>
         <p id="account-email" class="muted small"></p>
+        <div class="acc-jump" role="navigation"><button type="button" class="chip" data-action="acc-jump" data-target="acc-bags" data-i18n="jump_bags">Bags</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-alerts" data-i18n="jump_alerts">Alerts</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-activity" data-i18n="jump_activity">Activity</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-finder" data-i18n="jump_finder">Finder tag</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-look" data-i18n="jump_look">Look</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-security" data-i18n="jump_security">Security</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-family" data-i18n="jump_family">Family</button></div>
 
-        <section class="acc-section">
+        <section id="acc-bags" class="acc-section">
           <h3 data-i18n="your_bags">Your bags</h3>
           <ul id="bag-list" class="bag-list"></ul>
         </section>
@@ -417,7 +420,7 @@
           </button>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-alerts" class="acc-section">
           <div class="row-between">
             <div><h3 data-i18n="push_title">Phone notifications</h3><p id="push-state" class="muted small"></p></div>
             <button id="push-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="push" data-i18n-aria="push_title" aria-label="Phone notifications"></button>
@@ -436,7 +439,7 @@
           </div>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-activity" class="acc-section">
           <div class="row-between">
             <div><h3 data-i18n="steps_title">Count my steps</h3><p class="muted small" data-i18n="steps_sub">Uses this phone’s motion sensor while Trackly is open. Without it, steps are estimated from your bag’s walks.</p></div>
             <button id="steps-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-steps" data-i18n-aria="steps_title" aria-label="Count my steps"></button>
@@ -447,7 +450,7 @@
           </div>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-finder" class="acc-section">
           <h3 data-i18n="finder_title">If someone finds my bag</h3>
           <p class="muted small" data-i18n="finder_sub">A page with your phone number. Print its QR code and put it inside the bag.</p>
           <label class="label" for="finder-phone" data-i18n="finder_phone">Your phone number (WhatsApp)</label>
@@ -460,14 +463,14 @@
           </div>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-security" class="acc-section">
           <div class="row-between">
             <div><h3 data-i18n="mfa_title">Two-step login</h3><p id="mfa-state" class="muted small"></p></div>
             <button id="mfa-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="mfa" data-i18n-aria="mfa_title" aria-label="Two-step login"></button>
           </div>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-family" class="acc-section">
           <h3 data-i18n="join_title">Join a family bag</h3>
           <p class="muted small" data-i18n="join_sub">Got an invite code from family? Enter it to see their bag.</p>
           <div class="join-row">
@@ -476,12 +479,18 @@
           </div>
         </section>
 
-        <section class="acc-section">
+        <section id="acc-look" class="acc-section">
           <h3 data-i18n="appearance">Appearance</h3>
           <div id="scheme-seg" class="segmented small">
             <button type="button" class="seg" data-action="scheme" data-scheme="auto" data-i18n="scheme_auto">Auto</button>
             <button type="button" class="seg" data-action="scheme" data-scheme="light" data-i18n="scheme_light">Light</button>
             <button type="button" class="seg" data-action="scheme" data-scheme="dark" data-i18n="scheme_dark">Dark</button>
+          </div>
+          <h3 data-i18n="text_size">Text size</h3>
+          <div id="size-seg" class="segmented small">
+            <button type="button" class="seg" data-action="text-size" data-size="normal" data-i18n="size_normal">Normal</button>
+            <button type="button" class="seg" data-action="text-size" data-size="large" data-i18n="size_large">Large</button>
+            <button type="button" class="seg" data-action="text-size" data-size="xl" data-i18n="size_xl">Extra large</button>
           </div>
           <h3 data-i18n="theme">Colour theme</h3>
           <div id="theme-list" class="theme-list">
@@ -768,6 +777,15 @@
   </div>
 
   <button id="update-pill" class="update-pill" type="button" data-action="reload-app" hidden><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg><span data-i18n="update_ready">New version ready · Tap to update</span></button>
+
+  <!-- ============ ALERTS ============ -->
+  <div id="alerts-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="alerts-title">
+    <div class="modal-card alerts-card">
+      <h2 id="alerts-title" data-i18n="alerts">Recent alerts</h2>
+      <ul id="alerts-view-list" class="alert-list"></ul>
+      <button class="btn btn-secondary btn-lg" type="button" data-action="close-alerts" data-i18n="close">Close</button>
+    </div>
+  </div>
 
   <!-- ============ WHAT'S NEW ============ -->
   <div id="new-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="new-title">
