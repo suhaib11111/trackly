@@ -19,6 +19,8 @@
       display: flex; flex-direction: column; gap: 10px; }
     .share-top { position: absolute; z-index: 600; left: 12px; right: 12px; top: calc(12px + var(--safe-top)); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .share-top .pill { height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 10px; }
+    .share-card { max-height: 72vh; overflow-y: auto; }
+    .share-dirs { display: flex; flex-direction: column; gap: 10px; }
     .share-ended { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; }
     .share-ended div { max-width: 340px; display: flex; flex-direction: column; gap: 12px; align-items: center; }
   </style>
@@ -32,15 +34,16 @@
   <section id="card" class="share-card" hidden>
     <div class="row-between">
       <div><h2 id="name">—</h2><p id="area" class="muted small">—</p></div>
-      <a id="go" class="icon-btn" target="_blank" rel="noopener" aria-label="Directions">
+      <button id="go" class="icon-btn" type="button" aria-label="Directions">
         <svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
-      </a>
+      </button>
     </div>
     <div class="stats">
       <div class="stat"><span class="stat-label" data-s="updated"></span><span id="updated" class="stat-value">—</span></div>
       <div class="stat"><span class="stat-label" data-s="battery"></span><span id="battery" class="stat-value">—</span></div>
       <div class="stat"><span class="stat-label" data-s="ends"></span><span id="ends" class="stat-value">—</span></div>
     </div>
+    <div id="dirs" class="share-dirs" hidden></div>
     <p class="muted tiny center" data-s="private"></p>
   </section>
   <div id="ended" class="share-ended" hidden>
@@ -54,6 +57,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script src="js/config.js"></script>
   <script src="js/fake-backend.js"></script>
+  <script src="js/mini-route.js"></script>
   <script>
   // Someone shared their bag with you: show where it is, refresh every 10 s, stop when the link ends.
   (function () {
@@ -83,7 +87,10 @@
     (L.maplibreGL && webgl
       ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: '&copy; OpenFreeMap &copy; OpenStreetMap' })
       : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' })).addTo(m);
-    let marker = null, trail = null, first = true;
+    let marker = null, trail = null, first = true, last = null;
+    // directions to the bag, on this page (shortest way first)
+    const dirs = window.TracklyDirections({ map: m, box: $('dirs'), lang, to: () => last && { lat: last.lat, lng: last.lng }, bottom: () => $('card').offsetHeight });
+    $('go').addEventListener('click', () => dirs.start());
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
 
     async function refresh() {
@@ -99,7 +106,7 @@
       const age = (Date.now() - new Date(l.created_at)) / 60000;
       $('updated').textContent = age < 1 ? T.now : T.min.replace('{n}', Math.round(age));
       $('battery').textContent = typeof l.battery === 'number' ? l.battery + '%' : '—';
-      $('go').href = 'https://www.google.com/maps/dir/?api=1&destination=' + l.lat + ',' + l.lng;
+      last = l;
       const icon = L.divIcon({ className: '', iconSize: [44, 44], iconAnchor: [22, 22],
         html: '<div class="bag-marker ' + (data.mode === 'lost' ? 'lost' : '') + '"><span class="pulse"></span><span class="core"><svg viewBox="0 0 24 24"><path d="M6 8h12l1 12H5L6 8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg></span></div>' });
       if (!marker) marker = L.marker([l.lat, l.lng], { icon }).addTo(m); else { marker.setLatLng([l.lat, l.lng]); marker.setIcon(icon); }

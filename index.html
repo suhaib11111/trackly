@@ -298,8 +298,7 @@
           <ul id="rp-list" class="rp-list"></ul>
           <p id="rp-from" class="muted tiny"></p>
           <div class="actions">
-            <button class="btn btn-secondary" type="button" data-action="route-other" data-i18n="route_other">Other app</button>
-            <button id="rp-start" class="btn btn-primary" type="button" data-action="route-start" data-i18n="route_start">Start</button>
+            <button id="rp-start" class="btn btn-primary btn-lg" type="button" data-action="route-start" data-i18n="route_start">Start</button>
           </div>
         </div>
         <div class="rp-going">
@@ -638,7 +637,7 @@
         <dt data-i18n="address">Address</dt><dd id="rp-address"></dd>
         <dt data-i18n="coords">Coordinates</dt><dd id="rp-coords" dir="ltr"></dd>
         <dt data-i18n="battery">Battery</dt><dd id="rp-battery"></dd>
-        <dt>Google Maps</dt><dd><a id="rp-maps" dir="ltr" target="_blank" rel="noopener"></a></dd>
+        <dt data-i18n="map_link">Map link</dt><dd><a id="rp-maps" dir="ltr" target="_blank" rel="noopener"></a></dd>
         <dt data-i18n="report_made">Report made</dt><dd id="rp-made"></dd>
       </dl>
       <div id="rp-map" class="report-map"></div>
@@ -687,17 +686,6 @@
       </ul>
       <button class="btn btn-danger btn-lg" type="button" data-action="confirm-lost" data-i18n="confirm_yes">Yes, my bag is lost</button>
       <button class="btn btn-secondary btn-lg" type="button" data-action="cancel-lost" data-i18n="cancel">Cancel</button>
-    </div>
-  </div>
-
-  <!-- ============ DIRECTIONS: WHICH APP ============ -->
-  <div id="nav-menu" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="nav-title">
-    <div class="modal-card lang-card">
-      <h2 id="nav-title" data-i18n="nav_title">Directions with</h2>
-      <button class="lang-opt" type="button" data-action="nav-go" data-app="google"><span class="lang-flag nav-g">G</span><span><strong>Google Maps</strong></span></button>
-      <button class="lang-opt" type="button" data-action="nav-go" data-app="waze"><span class="lang-flag nav-w">W</span><span><strong>Waze</strong></span></button>
-      <button id="nav-apple" class="lang-opt" type="button" data-action="nav-go" data-app="apple"><span class="lang-flag nav-a">A</span><span><strong>Apple Maps</strong></span></button>
-      <button class="btn btn-secondary btn-lg" type="button" data-action="close-nav" data-i18n="close">Close</button>
     </div>
   </div>
 

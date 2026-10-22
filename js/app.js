@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.22b';
+  const APP_VERSION = '2026.10.22c';
 
   // ---------- state ----------
   const state = {
@@ -727,7 +727,7 @@
     box.querySelector('.bi-title').textContent = state.tracker ? (state.tracker.name || state.tracker.device_code) : '';
     box.querySelector('#bi-address').textContent = $('#bag-area').textContent;
     box.querySelector('#bi-copy').textContent = t('copy');
-    box.querySelector('#bi-maps').textContent = t('open_maps');
+    box.querySelector('#bi-maps').textContent = t('directions');
     const copy = async () => {
       const l = state.bagInfo.loc;
       const text = l.lat.toFixed(6) + ', ' + l.lng.toFixed(6);
@@ -735,10 +735,7 @@
     };
     box.querySelector('#bi-copy').addEventListener('click', copy);
     box.querySelector('#bi-coords').addEventListener('click', copy);
-    box.querySelector('#bi-maps').addEventListener('click', () => {
-      const l = state.bagInfo.loc;
-      window.open('https://www.google.com/maps/search/?api=1&query=' + l.lat.toFixed(6) + ',' + l.lng.toFixed(6), '_blank', 'noopener');
-    });
+    box.querySelector('#bi-maps').addEventListener('click', () => openRoute(state.bagInfo.loc, state.tracker ? (state.tracker.name || state.tracker.device_code) : ''));
     return box;
   }
   function fillBagInfo() {
@@ -1061,10 +1058,15 @@
     return true;
   }
 
+  // a Trackly link for a spot: opens place.html (map + directions), never another map app
+  function placeLink(lat, lng, name) {
+    return new URL('place.html#' + (+lat).toFixed(6) + ',' + (+lng).toFixed(6) + ',' + encodeURIComponent(String(name || '').slice(0, 60)), location.href).href;
+  }
+
   async function shareLocation() {
     const loc = state.recent[0];
     if (!loc) return;
-    const url = 'https://maps.google.com/?q=' + loc.lat.toFixed(6) + ',' + loc.lng.toFixed(6);
+    const url = placeLink(loc.lat, loc.lng, state.tracker ? (state.tracker.name || state.tracker.device_code) : '');
     try {
       if (navigator.share) { await navigator.share({ title: 'Trackly', text: t('share_text'), url }); return; }
       await navigator.clipboard.writeText(url);
@@ -1999,26 +2001,6 @@
   }
 
   // =====================================================================
-  // DIRECTIONS — Google Maps, Waze or Apple Maps
-  // =====================================================================
-  let navTo = null;
-  function openNavMenu(lat, lng) {
-    navTo = { lat, lng };
-    $('#nav-apple').hidden = !/iPhone|iPad|Macintosh/.test(navigator.userAgent);
-    $('#nav-menu').hidden = false;
-  }
-  function navGo(app) {
-    if (!navTo) return;
-    const ll = navTo.lat.toFixed(6) + ',' + navTo.lng.toFixed(6);
-    const url = app === 'waze' ? 'https://waze.com/ul?ll=' + ll + '&navigate=yes'
-      : app === 'apple' ? 'https://maps.apple.com/?daddr=' + ll
-      : 'https://www.google.com/maps/dir/?api=1&destination=' + ll;
-    localStorage.setItem('trackly-nav-app', app);
-    closeModal($('#nav-menu'));
-    window.open(url, '_blank', 'noopener');
-  }
-
-  // =====================================================================
   // FINDER TAG — a page with your phone number: print the QR and put it inside the bag.
   // Whoever finds the bag scans it and can call you, message you or send you where they are.
   // The details are in the link itself (after #), so they're never stored on a server.
@@ -2756,7 +2738,7 @@
     share.innerHTML = SHARE_SVG;
     share.setAttribute('aria-label', t('share_place'));
     share.addEventListener('click', async () => {
-      const url = 'https://www.google.com/maps/search/?api=1&query=' + (+p.lat).toFixed(6) + ',' + (+p.lng).toFixed(6);
+      const url = placeLink(p.lat, p.lng, name);
       try {
         if (navigator.share) await navigator.share({ title: name, text: name, url });
         else { await navigator.clipboard.writeText(name + ' ' + url); toast(t('copied')); }
@@ -3717,7 +3699,7 @@
   async function shareLive(hours) {
     if (!state.tracker) return;
     const { data, error } = await sb.rpc('create_share_link', { p_tracker: state.tracker.id, p_hours: hours || 4 });
-    if (error || !data) { shareLocation(); return; } // fall back to a one-time Google Maps point
+    if (error || !data) { shareLocation(); return; } // fall back to a one-time place link
     const url = new URL('share.html?t=' + encodeURIComponent(data), location.href).href;
     try {
       if (navigator.share) { await navigator.share({ title: 'Trackly', text: t('share_live_text', { h: hours || 4 }), url }); return; }
@@ -3743,7 +3725,7 @@
     $('#rp-coords').textContent = loc.lat.toFixed(6) + ', ' + loc.lng.toFixed(6);
     $('#rp-battery').textContent = typeof loc.battery === 'number' ? loc.battery + '%' : '—';
     $('#rp-address').textContent = $('#bag-area').textContent + ($('#bag-near').hidden ? '' : ' · ' + $('#bag-near').textContent);
-    $('#rp-maps').href = 'https://www.google.com/maps/search/?api=1&query=' + loc.lat.toFixed(6) + ',' + loc.lng.toFixed(6);
+    $('#rp-maps').href = placeLink(loc.lat, loc.lng, state.tracker.name || state.tracker.device_code);
     $('#rp-maps').textContent = $('#rp-maps').href;
     // last 2 hours of points
     const since = Date.now() - 2 * 3600e3;
@@ -4467,7 +4449,6 @@
       else if (a === 'close-route') closeRoute();
       else if (a === 'route-start') startNav(false);
       else if (a === 'route-end') { stopNav(); closeRoute(); }
-      else if (a === 'route-other') { if (rt.to) openNavMenu(rt.to.lat, rt.to.lng); }
       else if (a === 'car') carAction();
       else if (a === 'add-reminder') openReminderForm();
       else if (a === 'close-rem') closeModal($('#rem-view'));
@@ -4479,8 +4460,6 @@
       else if (a === 'toggle-steps') toggleSteps();
       else if (a === 'steps-resume') resumeSteps();
       else if (a === 'open-pharmacy') findOpenPharmacy();
-      else if (a === 'nav-go') navGo(el.dataset.app);
-      else if (a === 'close-nav') closeModal($('#nav-menu'));
       else if (a === 'close-trip') closeModal($('#trip-view'));
       else if (a === 'finder-qr') showFinderQr();
       else if (a === 'finder-share') shareFinder();

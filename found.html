@@ -57,13 +57,13 @@
   <script>
     (function () {
       var T = {
-        en: { title: 'You found a lost bag', sub_n: 'This is “{n}”. The owner would love to get it back.', sub: 'The owner would love to get it back.', call: 'Call the owner',
+        en: { pin: 'Bag found here', title: 'You found a lost bag', sub_n: 'This is “{n}”. The owner would love to get it back.', sub: 'The owner would love to get it back.', call: 'Call the owner',
           wa: 'Message on WhatsApp', loc: 'Send my location to the owner', thanks: 'Thank you for helping. Your details are not saved anywhere.',
           bad: 'This link is not complete. Please check the tag again.', hi: 'Hello! I found your bag (Trackly tag).', here: 'I am here:', getting: 'Getting your location…', noloc: 'Couldn’t get your location. You can still call or message.' },
-        ckb: { title: 'جانتایەکی ونبووت دۆزیوەتەوە', sub_n: 'ئەمە «{n}»ە. خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', sub: 'خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', call: 'پەیوەندی بە خاوەنەکەیەوە بکە',
+        ckb: { pin: 'جانتاکە لێرە دۆزرایەوە', title: 'جانتایەکی ونبووت دۆزیوەتەوە', sub_n: 'ئەمە «{n}»ە. خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', sub: 'خاوەنەکەی زۆر حەز دەکات بیگەڕێنێتەوە.', call: 'پەیوەندی بە خاوەنەکەیەوە بکە',
           wa: 'نامە لە WhatsApp', loc: 'شوێنەکەم بۆ خاوەنەکەی بنێرە', thanks: 'سوپاس بۆ یارمەتیدانت. زانیارییەکانت لە هیچ شوێنێک هەڵناگیرێن.',
           bad: 'ئەم بەستەرە تەواو نییە. تکایە دووبارە سەیری تاگەکە بکە.', hi: 'سڵاو! جانتاکەتم دۆزییەوە (تاگی Trackly).', here: 'من لێرەم:', getting: 'شوێنەکەت وەردەگیرێت…', noloc: 'نەتوانرا شوێنەکەت وەربگیرێت. هێشتا دەتوانیت پەیوەندی بکەیت یان نامە بنێریت.' },
-        ar: { title: 'لقد وجدت حقيبة مفقودة', sub_n: 'هذه «{n}». صاحبها يتمنى استعادتها.', sub: 'صاحبها يتمنى استعادتها.', call: 'اتصل بصاحبها',
+        ar: { pin: 'وُجدت الحقيبة هنا', title: 'لقد وجدت حقيبة مفقودة', sub_n: 'هذه «{n}». صاحبها يتمنى استعادتها.', sub: 'صاحبها يتمنى استعادتها.', call: 'اتصل بصاحبها',
           wa: 'راسله على واتساب', loc: 'أرسل موقعي إلى صاحبها', thanks: 'شكراً لمساعدتك. لا يتم حفظ بياناتك في أي مكان.',
           bad: 'هذا الرابط غير مكتمل. يرجى التحقق من البطاقة مرة أخرى.', hi: 'مرحباً! وجدت حقيبتك (بطاقة Trackly).', here: 'أنا هنا:', getting: 'جارٍ تحديد موقعك…', noloc: 'تعذر تحديد موقعك. ما زال بإمكانك الاتصال أو المراسلة.' }
       };
@@ -104,7 +104,7 @@
         navigator.geolocation.getCurrentPosition(function (pos) {
           label.textContent = t.loc;
           var ll = pos.coords.latitude.toFixed(6) + ',' + pos.coords.longitude.toFixed(6);
-          location.href = waLink(t.hi + ' ' + t.here + ' https://maps.google.com/?q=' + ll);
+          location.href = waLink(t.hi + ' ' + t.here + ' ' + new URL('place.html#' + ll + ',' + encodeURIComponent(t.pin), location.href).href);
         }, function () { label.textContent = t.loc; alert(t.noloc); }, { enableHighAccuracy: true, timeout: 15000 });
       });
       render();

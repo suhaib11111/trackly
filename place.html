@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Trackly · Place</title>
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* A place someone shared from Trackly (in the link after #: lat,lng,name). Map + card + directions, all here. */
+    .share-card { position: absolute; z-index: 600; left: 12px; right: 12px; bottom: calc(12px + var(--safe-bottom));
+      max-width: 520px; margin: 0 auto; background: var(--card); border-radius: 22px; box-shadow: var(--shadow); padding: 16px 18px;
+      display: flex; flex-direction: column; gap: 10px; max-height: 70vh; overflow-y: auto; }
+    .share-top { position: absolute; z-index: 600; left: 12px; right: 12px; top: calc(12px + var(--safe-top)); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .share-top .pill { height: 44px; padding: 0 14px; display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+    .place-pin { width: 34px; height: 42px; }
+    #dirs { display: flex; flex-direction: column; gap: 10px; }
+  </style>
+</head>
+<body>
+  <div id="map" aria-label="Map"></div>
+  <div class="share-top">
+    <a class="pill" href="./"><span class="logo">Trackly</span></a>
+  </div>
+  <section id="card" class="share-card">
+    <div><h2 id="name">—</h2><p id="area" class="muted small">—</p></div>
+    <button id="go" class="btn btn-primary btn-lg" type="button"><svg viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg><span data-s="dirs"></span></button>
+    <div id="dirs" hidden></div>
+    <p class="muted tiny center" data-s="note"></p>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.1.1/leaflet-maplibre-gl.js"></script>
+  <script src="js/mini-route.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    const TXT = {
+      en: { dirs: 'Directions', note: 'Shared with Trackly.', place: 'Place', bad: 'This link is not complete.' },
+      ckb: { dirs: 'ڕێگا', note: 'لە ڕێگەی Trackly هاوبەش کراوە.', place: 'شوێن', bad: 'ئەم بەستەرە تەواو نییە.' },
+      ar: { dirs: 'الاتجاهات', note: 'تمت المشاركة عبر Trackly.', place: 'مكان', bad: 'هذا الرابط غير مكتمل.' }
+    };
+    const nav = (navigator.language || 'en').toLowerCase();
+    const lang = (() => { try { const s = localStorage.getItem('trackly-lang'); if (s && TXT[s]) return s; } catch (e) {} return nav.startsWith('ar') ? 'ar' : (nav.startsWith('ku') || nav.startsWith('ckb') ? 'ckb' : 'en'); })();
+    const T = TXT[lang];
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'en' ? 'ltr' : 'rtl';
+    try {
+      const th = localStorage.getItem('trackly-theme'); if (th) document.documentElement.dataset.theme = th;
+      const sc = localStorage.getItem('trackly-scheme'); if (sc === 'light' || sc === 'dark') document.documentElement.dataset.scheme = sc;
+    } catch (e) { /* private mode */ }
+    document.querySelectorAll('[data-s]').forEach((el) => { el.textContent = T[el.dataset.s]; });
+    const $ = (id) => document.getElementById(id);
+
+    // #lat,lng,name
+    const parts = decodeURIComponent(location.hash.slice(1)).split(',');
+    const lat = parseFloat(parts[0]), lng = parseFloat(parts[1]);
+    const name = parts.slice(2).join(',').trim() || T.place;
+    const ok = Math.abs(lat) <= 90 && Math.abs(lng) <= 180 && !isNaN(lat) && !isNaN(lng);
+    $('name').textContent = ok ? name : T.bad;
+    document.title = 'Trackly · ' + (ok ? name : T.place);
+
+    const sc = document.documentElement.dataset.scheme;
+    const dark = sc === 'dark' || (sc !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    const m = L.map('map', { zoomControl: false }).setView(ok ? [lat, lng] : [36.1911, 44.0092], 16);
+    try { if (window.maplibregl && maplibregl.getRTLTextPluginStatus() === 'unavailable') maplibregl.setRTLTextPlugin('https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', true).catch(() => {}); } catch (e) { /* older engine */ }
+    const webgl = (() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch (e) { return false; } })();
+    (L.maplibreGL && webgl
+      ? L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: '&copy; OpenFreeMap &copy; OpenStreetMap' })
+      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' })).addTo(m);
+    if (!ok) { $('go').hidden = true; $('area').textContent = ''; return; }
+    L.marker([lat, lng], { icon: L.divIcon({ className: '', iconSize: [34, 42], iconAnchor: [17, 40], html: '<div class="search-pin"></div>' }) }).addTo(m);
+    m.panBy([0, 120], { animate: false });
+    fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=' + lat + '&lon=' + lng + '&accept-language=' + (lang === 'ckb' ? 'ckb,ku,ar' : lang))
+      .then((r) => r.json()).then((d) => { const a = d.address || {}; $('area').textContent = [a.road, a.neighbourhood || a.suburb, a.city || a.town].filter(Boolean).join(', ') || (lat.toFixed(5) + ', ' + lng.toFixed(5)); })
+      .catch(() => { $('area').textContent = lat.toFixed(5) + ', ' + lng.toFixed(5); });
+
+    const dirs = window.TracklyDirections({ map: m, box: $('dirs'), lang, to: () => ({ lat, lng }), bottom: () => $('card').offsetHeight });
+    $('go').addEventListener('click', () => { $('go').hidden = true; dirs.start(); });
+  })();
+  </script>
+</body>
+</html>
