@@ -15,7 +15,10 @@
     body { overflow: auto; }
     a.btn { text-decoration: none; }
     .wrap { max-width: 980px; margin: 0 auto; padding: calc(16px + var(--safe-top)) 16px 40px; display: flex; flex-direction: column; gap: 16px; }
-    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .top .logo { white-space: nowrap; }
+    .top .btn { white-space: nowrap; min-height: 40px; padding: 0 14px; }
+    @media (max-width: 420px) { .top .logo { font-size: 17px; } .top .btn { padding: 0 12px; font-size: 13px; } }
     .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
     .tile { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; }
     .tile strong { display: block; font-size: 26px; color: var(--accent-strong); }

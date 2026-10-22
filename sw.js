@@ -2,17 +2,18 @@
 //  - app files: stale-while-revalidate (open instantly from the saved copy, quietly fetch the new one for next time)
 //  - libraries + fonts from the CDN: cache-first (their web addresses include the version, so they never change)
 //  - live data (Supabase, map tiles, place search): always from the network
-const APP = 'trackly-app-v12';
+const APP = 'trackly-app-v13';
 const LIBS = 'trackly-libs-v1';
 const SHELL = [
   './', './index.html', './share.html', './landing.html', './privacy.html', './admin.html',
   './css/styles.css', './js/config.js', './js/fake-backend.js', './js/i18n.js', './js/app.js',
-  './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './data/speed-cameras.json'
+  './manifest.json', './icons/icon-192.png', './icons/icon-512.png', './data/speed-cameras.json', './found.html'
 ];
 const LIB_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(APP).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // each file on its own: one missing file must not stop the others from being saved
+  event.waitUntil(caches.open(APP).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {

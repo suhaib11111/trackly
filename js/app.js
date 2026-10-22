@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.21';
+  const APP_VERSION = '2026.10.22';
 
   // ---------- state ----------
   const state = {
@@ -104,7 +104,8 @@
     const go = () => $$('.view').forEach((v) => { v.hidden = v.id !== id; });
     const cur = $$('.view').find((v) => !v.hidden);
     if (document.startViewTransition && cur && cur.id !== id && cur.id !== 'view-loading' && !matchMedia('(prefers-reduced-motion: reduce)').matches) document.startViewTransition(go); else go();
-    if (id === 'view-app' && map.m) setTimeout(() => map.m.invalidateSize(), 50);
+    // the map was made while hidden: give it its real size, and let the vector map redraw all of it
+    if (id === 'view-app' && map.m) [50, 400].forEach((ms) => setTimeout(() => { map.m.invalidateSize(); const gl = mapGl(); if (gl) { gl.resize(); gl.triggerRepaint(); } }, ms));
   }
 
   function errorText(err) {
@@ -148,7 +149,10 @@
     catch (e) { return new Date(iso).toTimeString().slice(0, 5); }
   }
 
-  function isDark() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+  function isDark() {
+    const s = localStorage.getItem('trackly-scheme');
+    return s === 'dark' || (s !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
   function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
   // ---------- language ----------
@@ -171,7 +175,7 @@
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
     places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', goal: 'trackly-goal',
     finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
-    car: 'trackly-car', reminders: 'trackly-reminders', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', favs: 'trackly-favs', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -204,7 +208,8 @@
     if (s.cams != null) { cams.on = s.cams !== '0'; if (map.m) renderCams(); }
     $('#behind-switch').setAttribute('aria-checked', String(leftBehindOn()));
     renderStepsSettings(); renderCamSound(); renderFinder();
-    renderVoice(); renderSmartSwitches(); renderTraffic(); drawCar(); renderReminders();
+    renderVoice(); renderSmartSwitches(); renderTraffic(); drawCar(); renderReminders(); drawFavs();
+    if (s.scheme) applyScheme(s.scheme, true);
     if (stepsOn()) startSteps(false);
   }
 
@@ -436,6 +441,7 @@
 
   function finishSetup() {
     localStorage.setItem('trackly-setup-done', '1');
+    localStorage.setItem('trackly-seen-version', APP_VERSION);
     syncSettings();
     if (state.trackers.length) openApp(); else showView('view-pair');
   }
@@ -449,7 +455,7 @@
     // Arabic / Kurdish letters on the map need this add-on to join up correctly (loaded only when needed)
     try { if (window.maplibregl && maplibregl.getRTLTextPluginStatus && maplibregl.getRTLTextPluginStatus() === 'unavailable') maplibregl.setRTLTextPlugin('https://cdn.jsdelivr.net/npm/@mapbox/mapbox-gl-rtl-text@0.2.3/mapbox-gl-rtl-text.min.js', true).catch(() => {}); } catch (e) { /* older engine */ }
     setTiles();
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { setTiles(); renderMapPanel(); });
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (schemePref() === 'auto') { setTiles(); renderMapPanel(); } });
     map.m.on('dragstart', () => { if (!state.zoneEdit) { state.followBag = false; updateCenterBtn(); } });
     // while adding a safe zone, a tap on the map moves the pin there
     map.m.on('click', (e) => { $('#style-picker').hidden = true; if (state.zoneEdit) { placePinAt(e.latlng); return; } if (tapCam(e.latlng)) return; tapMapPlace(e.latlng); });
@@ -499,9 +505,10 @@
       raster = false;
       if (st === 'detailed') {
         // start with the plain style, then swap in the tuned one as soon as it's built (a few ms after the first visit)
-        map.tiles = L.maplibreGL({ style: styleCache[(dark ? 'd' : 'l') + state.lang] || 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: OFM_ATTR });
+        const ready = libertyBase ? makeMapStyle(dark) : null;
+        map.tiles = L.maplibreGL({ style: ready || 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'liberty'), attribution: OFM_ATTR });
         const layer = map.tiles;
-        buildMapStyle(dark).then((s) => { if (map.tiles === layer && layer.getMaplibreMap()) layer.getMaplibreMap().setStyle(s); }).catch(() => {});
+        if (!ready) buildMapStyle(dark).then((s) => { if (map.tiles === layer && layer.getMaplibreMap()) layer.getMaplibreMap().setStyle(s); }).catch(() => {});
       } else {
         map.tiles = L.maplibreGL({ style: 'https://tiles.openfreemap.org/styles/' + (dark ? 'dark' : 'positron'), attribution: OFM_ATTR });
       }
@@ -2597,6 +2604,7 @@
     const el = $('#wx-pill');
     const c = wx.data && wx.data.f.current;
     el.hidden = !c || state.tab !== 'map' || !!state.zoneEdit;
+    $('#view-app').classList.toggle('has-wx', !el.hidden);
     if (!c) return;
     const warn = wxWarn();
     el.className = 'wx-pill' + (warn ? ' warn-' + warn : '');
@@ -2652,6 +2660,152 @@
   }
 
   // =====================================================================
+  // APPEARANCE — Auto (follows the phone), Light or Dark
+  // =====================================================================
+  const SCHEMES = ['auto', 'light', 'dark'];
+  function schemePref() { const v = localStorage.getItem('trackly-scheme'); return SCHEMES.includes(v) ? v : 'auto'; }
+  function applyScheme(v, quiet) {
+    const s = SCHEMES.includes(v) ? v : 'auto';
+    const changed = s !== schemePref();
+    localStorage.setItem('trackly-scheme', s);
+    if (s === 'auto') delete document.documentElement.dataset.scheme; else document.documentElement.dataset.scheme = s;
+    $$('#scheme-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.scheme === s));
+    const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    $$('meta[name="theme-color"]').forEach((m) => { m.content = bg; });
+    if (!quiet) syncSettings();
+    if (changed && map.m) { setTiles(); renderMapPanel(); renderZones(); }
+  }
+
+  // =====================================================================
+  // SAVED PLACES (the star on a place card) and RECENT SEARCHES — shown as soon as the search opens
+  // =====================================================================
+  const STAR = 'M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6l-5.4 2.9 1.2-6-4.5-4.2 6.1-.7z';
+  const SHARE_SVG = '<svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg>';
+  const favKey = (p) => (+p.lat).toFixed(5) + ',' + (+p.lng).toFixed(5);
+  function favs() { try { return JSON.parse(localStorage.getItem('trackly-favs')) || []; } catch (e) { return []; } }
+  function recents() { try { return JSON.parse(localStorage.getItem('trackly-recent')) || []; } catch (e) { return []; } }
+  function toggleFav(p, name) {
+    const k = favKey(p);
+    let list = favs();
+    const had = list.some((f) => f.k === k);
+    if (had) list = list.filter((f) => f.k !== k);
+    else list.unshift({ k, name: String(name || t('dropped_pin')).slice(0, 60), lat: +(+p.lat).toFixed(6), lng: +(+p.lng).toFixed(6), g: p.group || 'other' });
+    localStorage.setItem('trackly-favs', JSON.stringify(list.slice(0, 60)));
+    syncSettings(); drawFavs();
+    toast(had ? t('fav_removed') : t('fav_added'));
+    return !had;
+  }
+  function drawFavs() {
+    if (!map.m) return;
+    if (map.favs) { map.m.removeLayer(map.favs); map.favs = null; }
+    const g = L.layerGroup();
+    for (const f of favs()) {
+      L.marker([f.lat, f.lng], { keyboard: false, zIndexOffset: 800, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="fav-pin"><svg viewBox="0 0 24 24"><path d="' + STAR + '"/></svg></div>' }) })
+        .on('click', () => showPlace({ id: 'fav', lat: f.lat, lng: f.lng, group: PLACE_GROUPS[f.g] ? f.g : 'other', tags: { name: f.name } })).addTo(g);
+    }
+    map.favs = g.addTo(map.m);
+  }
+  // star + share buttons on a place card
+  function wirePlaceTools(box, p, name) {
+    const fav = box.querySelector('[data-pa="fav"]'), share = box.querySelector('[data-pa="share"]');
+    if (!fav || !share) return;
+    const paint = (on) => {
+      fav.classList.toggle('on', on);
+      fav.innerHTML = '<svg viewBox="0 0 24 24"><path d="' + STAR + '"/></svg>';
+      fav.setAttribute('aria-label', on ? t('fav_remove') : t('fav_add'));
+      fav.setAttribute('aria-pressed', String(on));
+    };
+    paint(favs().some((f) => f.k === favKey(p)));
+    fav.addEventListener('click', () => paint(toggleFav(p, name)));
+    share.innerHTML = SHARE_SVG;
+    share.setAttribute('aria-label', t('share_place'));
+    share.addEventListener('click', async () => {
+      const url = 'https://www.google.com/maps/search/?api=1&query=' + (+p.lat).toFixed(6) + ',' + (+p.lng).toFixed(6);
+      try {
+        if (navigator.share) await navigator.share({ title: name, text: name, url });
+        else { await navigator.clipboard.writeText(name + ' ' + url); toast(t('copied')); }
+      } catch (e) { /* closed */ }
+    });
+  }
+  function addRecent(r) {
+    const k = favKey(r);
+    const list = recents().filter((x) => favKey(x) !== k);
+    list.unshift({ name: String(r.name).slice(0, 60), sub: String(r.sub || '').slice(0, 80), lat: +(+r.lat).toFixed(6), lng: +(+r.lng).toFixed(6), group: r.group || null });
+    try { localStorage.setItem('trackly-recent', JSON.stringify(list.slice(0, 8))); } catch (e) { /* full */ }
+  }
+  function searchItem(r, icon) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    const g = r.group && PLACE_GROUPS[r.group] ? r.group : null;
+    b.innerHTML = '<span class="place-dot" style="--c:' + (icon === 'star' ? '#E0A100' : icon === 'recent' ? '#64748B' : (g ? PLACE_GROUPS[g].color : '#64748B')) + '">' +
+      (icon === 'star' ? '<svg viewBox="0 0 24 24"><path d="' + STAR + '"/></svg>' : icon === 'recent' ? '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>' : placeIcon(g || 'other')) +
+      '</span><span class="sr-text"><strong></strong><span></span></span>';
+    b.querySelector('strong').textContent = r.name;
+    const from = state.me || state.recent[0];
+    b.querySelector('.sr-text span').textContent = [r.sub, from ? fmtDistance(distanceM(from, r)) : ''].filter(Boolean).join(' · ');
+    b.addEventListener('click', () => {
+      closeSearch();
+      if (icon !== 'star') addRecent(r);
+      state.followBag = false; updateCenterBtn();
+      if (state.tab !== 'map') switchTab('map');
+      map.m.setView([r.lat, r.lng], 17);
+      if (map.searchPin) map.m.removeLayer(map.searchPin);
+      map.searchPin = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: '', iconSize: [34, 42], iconAnchor: [17, 40], html: '<div class="search-pin"></div>' }) }).addTo(map.m);
+      showPlace({ id: 'search', lat: r.lat, lng: r.lng, group: g || 'other', tags: { name: r.name } });
+    });
+    li.appendChild(b);
+    return li;
+  }
+  function renderSearchHome() {
+    const list = $('#map-search-results');
+    list.innerHTML = '';
+    const head = (txt, btn) => {
+      const li = document.createElement('li'); li.className = 'sr-head';
+      const s = document.createElement('span'); s.textContent = txt; li.appendChild(s);
+      if (btn) li.appendChild(btn);
+      list.appendChild(li);
+    };
+    const f = favs(), r = recents();
+    if (f.length) { head(t('fav_title')); f.forEach((x) => list.appendChild(searchItem({ name: x.name, sub: t('pg_' + (PLACE_GROUPS[x.g] ? x.g : 'other')), lat: x.lat, lng: x.lng, group: x.g }, 'star'))); }
+    if (r.length) {
+      const clear = document.createElement('button');
+      clear.type = 'button'; clear.className = 'link-btn tiny-link'; clear.textContent = t('recent_clear');
+      clear.addEventListener('click', () => { localStorage.removeItem('trackly-recent'); renderSearchHome(); });
+      head(t('recent_title'), clear);
+      r.forEach((x) => list.appendChild(searchItem(x, 'recent')));
+    }
+    if (!f.length && !r.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('search_hint'); list.appendChild(li); }
+  }
+
+  // =====================================================================
+  // UPDATES — a new version was published: "Tap to update"
+  // =====================================================================
+  function watchForUpdates() {
+    if (!('serviceWorker' in navigator)) return;
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        if (!w) return;
+        w.addEventListener('statechange', () => { if (w.state === 'activated' && hadController) $('#update-pill').hidden = false; });
+      });
+      // look again whenever Trackly comes back to the front (at most every 30 min)
+      let last = Date.now();
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - last > 30 * 60e3) { last = Date.now(); reg.update().catch(() => {}); } });
+    }).catch(() => {});
+  }
+
+  // =====================================================================
+  // WHAT'S NEW — shown once after an update (not to brand-new users)
+  // =====================================================================
+  function maybeWhatsNew() {
+    if (!state.tracker || localStorage.getItem('trackly-seen-version') === APP_VERSION) return;
+    localStorage.setItem('trackly-seen-version', APP_VERSION);
+    setTimeout(() => { if ($('#view-app').hidden || !$('#nav-banner').hidden) return; $('#new-view').hidden = false; }, 1200);
+  }
+
+  // =====================================================================
   // PROFESSIONAL MAP STYLE — OpenFreeMap "Liberty" (free, no key), tuned like Google Maps:
   //  - every kind of place with its own icon (hospital, pharmacy, school, mosque, café, bank, fuel…)
   //  - labels never overlap and fade in/out while zooming (done by the map engine)
@@ -2680,7 +2834,13 @@
   };
   const POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20', 'trackly-major'];
   const poiBaseFilters = {};
-  let libertyBase = null;
+  let libertyBase = (() => {
+    try {
+      const c = JSON.parse(localStorage.getItem('trackly-liberty'));
+      if (c && c.s && c.s.layers) { if (Date.now() - c.at > 7 * 86400e3) setTimeout(() => loadLiberty().catch(() => {}), 8000); return c.s; }
+    } catch (e) { /* none saved */ }
+    return null;
+  })();
   const styleCache = {};
 
   function poiColorExpr(dark) {
@@ -2748,9 +2908,17 @@
   }
 
   async function buildMapStyle(dark) {
+    if (!libertyBase) await loadLiberty();
+    return makeMapStyle(dark);
+  }
+  // the base style is saved on the phone, so next time the map opens in one step (refreshed weekly)
+  async function loadLiberty() {
+    libertyBase = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
+    try { localStorage.setItem('trackly-liberty', JSON.stringify({ at: Date.now(), s: libertyBase })); } catch (e) { /* storage full */ }
+  }
+  function makeMapStyle(dark) {
     const key = (dark ? 'd' : 'l') + state.lang;
     if (styleCache[key]) return styleCache[key];
-    if (!libertyBase) libertyBase = await (await fetch('https://tiles.openfreemap.org/styles/liberty')).json();
     const s = JSON.parse(JSON.stringify(libertyBase));
     const name = nameExpr();
     const minz = { poi_r1: 13, poi_r7: 14, poi_r20: 15 };
@@ -3071,9 +3239,10 @@
     box.className = 'bi';
     const g = PLACE_GROUPS[p.group];
     box.innerHTML = '<div class="pl-head"><span class="place-dot big" style="--c:' + g.color + '">' + placeIcon(p.group) + '</span>' +
-      '<div><strong class="bi-title"></strong><span class="pl-type"></span></div></div><dl class="bi-grid"></dl>' +
+      '<div><strong class="bi-title"></strong><span class="pl-type"></span></div><span class="pl-tools"><button type="button" class="icon-btn small" data-pa="share"></button><button type="button" class="icon-btn small fav-btn" data-pa="fav"></button></span></div><dl class="bi-grid"></dl>' +
       '<div class="bi-actions"><button type="button" class="btn btn-secondary" data-pa="zone"></button><button type="button" class="btn btn-primary" data-pa="go"></button></div>';
     box.querySelector('.bi-title').textContent = placeName(p.tags);
+    wirePlaceTools(box, p, placeName(p.tags));
     const tagType = p.tags.shop || p.tags.amenity || p.tags.tourism || p.tags.leisure || p.tags.kind || '';
     box.querySelector('.pl-type').textContent = t('pg_' + p.group) + (tagType && p.group !== 'other' ? '' : (tagType ? ' · ' + tagType.replace(/_/g, ' ') : ''));
     const dl = box.querySelector('dl');
@@ -3144,7 +3313,7 @@
   function openSearch() {
     $('#search-panel').hidden = false;
     $('#map-search').value = '';
-    $('#map-search-results').innerHTML = '';
+    renderSearchHome();
     setTimeout(() => $('#map-search').focus(), 50);
   }
   function closeSearch() { $('#search-panel').hidden = true; $('#map-search').blur(); }
@@ -3152,7 +3321,7 @@
     clearTimeout(mapSearchTimer);
     const q = e.target.value.trim();
     const list = $('#map-search-results');
-    if (q.length < 2) { list.innerHTML = ''; return; }
+    if (q.length < 2) { renderSearchHome(); return; }
     mapSearchTimer = setTimeout(async () => {
       const seq = ++mapSearchSeq;
       // 1) places already loaded on the map (instant), 2) OpenStreetMap search
@@ -3176,24 +3345,7 @@
       const addLink = () => { const li = document.createElement('li'); li.className = 'empty add-place'; const a = document.createElement('a'); a.target = '_blank'; a.rel = 'noopener';
         a.href = 'https://www.openstreetmap.org/note/new#map=18/' + c.lat.toFixed(5) + '/' + c.lng.toFixed(5); a.textContent = t('add_place'); li.appendChild(a); list.appendChild(li); };
       if (!all.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_results'); list.appendChild(li); addLink(); return; }
-      all.forEach((r) => {
-        const li = document.createElement('li');
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.innerHTML = '<span class="place-dot" style="--c:' + (r.group ? PLACE_GROUPS[r.group].color : '#64748B') + '">' + placeIcon(r.group || 'other') + '</span><span class="sr-text"><strong></strong><span></span></span>';
-        b.querySelector('strong').textContent = r.name;
-        b.querySelector('.sr-text span').textContent = r.sub + (state.recent[0] ? ' · ' + fmtDistance(distanceM(state.recent[0], r)) : '');
-        b.addEventListener('click', () => {
-          closeSearch();
-          state.followBag = false; updateCenterBtn();
-          map.m.setView([r.lat, r.lng], 17);
-          if (map.searchPin) map.m.removeLayer(map.searchPin);
-          map.searchPin = L.marker([r.lat, r.lng], { icon: L.divIcon({ className: '', iconSize: [34, 42], iconAnchor: [17, 40], html: '<div class="search-pin"></div>' }) }).addTo(map.m);
-          showPlace({ id: 'search', lat: r.lat, lng: r.lng, group: r.group || 'other', tags: { name: r.name } });
-        });
-        li.appendChild(b);
-        list.appendChild(li);
-      });
+      all.forEach((r) => list.appendChild(searchItem(r)));
       addLink();
     }, 350);
   }
@@ -4179,6 +4331,9 @@
       else if (a === 'toggle-cams') toggleCams();
       else if (a === 'toggle-cam-sound') toggleCamSound();
       else if (a === 'toggle-voice') toggleVoice();
+      else if (a === 'scheme') applyScheme(el.dataset.scheme);
+      else if (a === 'reload-app') location.reload();
+      else if (a === 'close-new') closeModal($('#new-view'));
       else if (a === 'toggle-traffic') toggleTraffic();
       else if (a === 'toggle-night') toggleSmart('trackly-night-guard', nightOn);
       else if (a === 'toggle-unusual') toggleSmart('trackly-unusual', unusualOn);
@@ -4284,6 +4439,7 @@
   // ---------- start ----------
   function start() {
     applyTheme(localStorage.getItem('trackly-theme') || 'gold');
+    applyScheme(schemePref(), true);
     takeLinkAction();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open
@@ -4325,7 +4481,7 @@
     initMap();
     renderTraffic(); drawCar();
     map.m.on('move', syncEditCircle);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    watchForUpdates();
     $('#google-btn').hidden = !CFG.googleLogin;
     renderInstall();
     $('#app-version').textContent = APP_VERSION;
@@ -4333,6 +4489,8 @@
     countVisit();
     route().then(() => {
       takeShortcut();
+      maybeWhatsNew();
+      drawFavs();
       // left-behind needs the phone's location: start it quietly if the user already allowed it
       if (leftBehindOn() && navigator.permissions && state.tracker) navigator.permissions.query({ name: 'geolocation' }).then((p) => { if (p.state === 'granted') locateMe(false); }).catch(() => {});
     }).catch((e) => { reportError(e); showView('view-auth'); toast(t('err_generic')); });
