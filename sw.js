@@ -2,7 +2,7 @@
 //  - app files: stale-while-revalidate (open instantly from the saved copy, quietly fetch the new one for next time)
 //  - libraries + fonts from the CDN: cache-first (their web addresses include the version, so they never change)
 //  - live data (Supabase, map tiles, place search): always from the network
-const APP = 'trackly-app-v18';
+const APP = 'trackly-app-v19';
 const LIBS = 'trackly-libs-v1';
 const SHELL = [
   './', './index.html', './share.html', './landing.html', './privacy.html', './admin.html',

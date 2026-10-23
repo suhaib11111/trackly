@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.23b';
+  const APP_VERSION = '2026.10.23c';
 
   // ---------- state ----------
   const state = {
@@ -187,7 +187,7 @@
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
     places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', height: 'trackly-height', goal: 'trackly-goal',
     finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
-    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', vibe: 'trackly-vibe', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -223,6 +223,7 @@
     renderVoice(); renderSmartSwitches(); renderTraffic(); drawCar(); renderReminders(); drawFavs();
     if (s.scheme) applyScheme(s.scheme, true);
     if (s.size) applySize(s.size, true);
+    renderVibe();
     if (stepsOn()) startSteps(false);
   }
 
@@ -594,7 +595,7 @@
     state.followBag = true;
     map.followKey = null;
     updateCenterBtn();
-    if (navigator.vibrate) navigator.vibrate(6);
+    if (navigator.vibrate) vibe(6);
     flyToBag(L.latLng(loc.lat, loc.lng), true);
   }
   function updateCenterBtn() {
@@ -1048,8 +1049,8 @@
     const start = (e) => {
       if (e.button !== undefined && e.button !== 0) return;
       btn.classList.add('holding');
-      if (navigator.vibrate) navigator.vibrate(15);
-      timer = setTimeout(() => { stop(); if (navigator.vibrate) navigator.vibrate(50); openConfirm(); }, 2000);
+      if (navigator.vibrate) vibe(15);
+      timer = setTimeout(() => { stop(); if (navigator.vibrate) vibe(50); openConfirm(); }, 2000);
     };
     const stop = () => { clearTimeout(timer); timer = null; btn.classList.remove('holding'); };
     btn.addEventListener('pointerdown', start);
@@ -1098,7 +1099,7 @@
     doSwitchTab(tab);
     moveTabInk();
     if (prev === tab || reduce || !map.m) return;
-    if (navigator.vibrate) navigator.vibrate(5);
+    if (navigator.vibrate) vibe(5);
     // slide the new panel in from the side it's on (mirrored in Arabic / Kurdish)
     let dir = TAB_ORDER.indexOf(tab) > TAB_ORDER.indexOf(prev) ? 1 : -1;
     if (document.documentElement.dir === 'rtl') dir = -dir;
@@ -1150,7 +1151,7 @@
     if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); }
     renderPlaces();
     renderMapPanel();
-    if (tab !== 'map') { staggerIn($('#panel-' + tab)); $$('.segmented.has-pill').forEach(syncSegPill); }
+    if (tab !== 'map') { staggerIn($('#panel-' + tab)); $$('.segmented.has-pill').forEach(syncSegPill); r3OnTab(tab); }
   }
 
   // ---------- history ----------
@@ -1266,10 +1267,11 @@
     $('#replay').hidden = pts.length < 2;
     if (!pts.length) {
       $('#history-summary').textContent = '';
+      renderHighlights([], []); setReplayTicks([], []); $('#hist-trend').hidden = true;
       ['#hist-km', '#hist-stops', '#hist-moving'].forEach((s) => { $(s).textContent = '0'; });
       const li = document.createElement('li');
       li.className = 'r2-empty';
-      li.innerHTML = '<span class="r2-empty-ic"><svg viewBox="0 0 24 24"><path d="' + TL_ICON.stop + '"/></svg></span><strong></strong><span></span>';
+      li.innerHTML = '<span class="r3-illo">' + illo('history') + '</span><strong></strong><span></span>';
       li.querySelector('strong').textContent = t('no_trips');
       li.querySelector('span:last-child').textContent = t('no_trips_sub');
       list.appendChild(li);
@@ -1290,6 +1292,9 @@
     setStat($('#hist-stops'), String(stops.length), true);
     setStat($('#hist-moving'), movingS >= 60 ? fmtDuration(movingS / 60) : '0', true);
     $('#history-summary').textContent = t('history_points', { n: pts.length });
+    renderHighlights(pts, stops);
+    setReplayTicks(pts, stops);
+    loadTrend(meters, start).catch(() => {});
 
     const accent = cssVar('--accent');
     const group = L.layerGroup();
@@ -1364,6 +1369,7 @@
     if (!pts.length || !map.replayDot) return;
     const k = Math.max(0, Math.min(pts.length - 1, i));
     const p = pts[k];
+    replayPassStop(k);
     map.replayDot.setLatLng([p.lat, p.lng]);
     $('#replay-clock').textContent = clockTime(p.created_at);
     $('#replay-batt').textContent = typeof p.battery === 'number' ? p.battery + '%' : '';
@@ -1418,8 +1424,8 @@
     if (!state.zones.length) {
       const li = document.createElement('li');
       li.className = 'r2-empty';
-      li.innerHTML = '<span class="r2-empty-ic"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></span><strong></strong>' +
-        '<button type="button" class="btn btn-primary r2-add" data-action="add-zone"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span></span></button>';
+      li.innerHTML = '<span class="r3-illo">' + illo('zones') + '</span><strong></strong>' +
+        '<button type="button" class="btn btn-primary r2-add" data-action="add-zone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span></span></button>';
       li.querySelector('strong').textContent = t('no_zones');
       li.querySelector('button span').textContent = t('add_zone');
       list.appendChild(li);
@@ -1429,6 +1435,25 @@
       const isIn = !!loc && distanceM(loc, z) <= z.radius_m;
       li.className = 'zone-item' + (z.enabled ? '' : ' off') + (isIn ? ' inside' : '');
 
+      // behind the card: Edit / Delete (swipe the card to the side to see them)
+      const acts = document.createElement('div');
+      acts.className = 'zone-acts';
+      const edit = document.createElement('button');
+      edit.type = 'button'; edit.className = 'za-edit'; edit.tabIndex = -1;
+      edit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4l11-11-4-4L4 16zM14 6l4 4"/></svg><span></span>';
+      edit.querySelector('span').textContent = t('edit');
+      edit.setAttribute('aria-label', t('edit_zone') + ': ' + z.name);
+      edit.addEventListener('click', () => startZoneEdit(z));
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'za-del'; del.tabIndex = -1;
+      del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span></span>';
+      del.querySelector('span').textContent = t('delete');
+      del.setAttribute('aria-label', t('delete') + ': ' + z.name);
+      del.addEventListener('click', () => deleteZone(z));
+      acts.append(edit, del);
+
+      const slide = document.createElement('div');
+      slide.className = 'zone-slide';
       // tap the zone: the map flies there, then the editor opens (move, resize, rename)
       const info = document.createElement('button');
       info.type = 'button';
@@ -1448,8 +1473,12 @@
       const span = document.createElement('span');
       span.textContent = zoneMeta(z);
       text.append(top, span);
+      const wk = zoneWeekText(z);
+      if (wk) { const w = document.createElement('span'); w.className = 'zone-week'; w.textContent = wk; text.appendChild(w); }
       info.append(icon, text);
       info.addEventListener('click', () => {
+        if (li.dataset.block) { li.dataset.block = ''; return; }          // that was a swipe or a long-press
+        if (li.classList.contains('open')) { li._close(); return; }
         if (reduceMotion()) { startZoneEdit(z); return; }
         map.m.flyTo([z.lat, z.lng], z.radius_m > 400 ? 15 : 16, { duration: 0.5 });
         setTimeout(() => { if (state.tab === 'zones' && !state.zoneEdit) startZoneEdit(z); }, 520);
@@ -1463,7 +1492,9 @@
       sw.setAttribute('aria-label', z.name);
       sw.addEventListener('click', () => toggleZone(z));
 
-      li.append(info, sw);
+      slide.append(info, sw);
+      li.append(acts, slide);
+      wireZoneCard(li, slide, z);
       list.appendChild(li);
     });
     if ((state.tab === 'zones' || state.tab === 'map') && !state.zoneEdit) drawZones(false);
@@ -1537,8 +1568,8 @@
     if (map.editCircle) map.editCircle.setRadius(r);
   }
 
-  function startZoneEdit(z) {
-    state.zoneEdit = { id: z ? z.id : null, notify: z ? z.notify_on : 'leave', kind: (z && z.kind) || 'home' };
+  function startZoneEdit(z, preset) {
+    state.zoneEdit = { id: z ? z.id : null, notify: z ? z.notify_on : 'leave', kind: (z && z.kind) || (preset && preset.kind) || 'home' };
     $('#panel-zones').hidden = true;
     $('#panel-zone-edit').hidden = false;
     $('#sheet').classList.add('editing');
@@ -1559,18 +1590,20 @@
     $('#zone-name').value = z ? z.name : '';
     setKind(state.zoneEdit.kind);
     if (z) $('#zone-name').value = z.name;
+    else if (preset && preset.name) $('#zone-name').value = preset.name;
     $$('#zone-notify .seg').forEach((b) => b.classList.toggle('active', b.dataset.notify === state.zoneEdit.notify));
     map.zones.clearLayers();
     renderMapPanel();
 
     // start at the zone itself, or at the bag's location
     const loc = state.recent[0];
-    const start = z ? [z.lat, z.lng] : (loc ? [loc.lat, loc.lng] : null);
+    const start = z ? [z.lat, z.lng] : preset ? [preset.lat, preset.lng] : (loc ? [loc.lat, loc.lng] : null);
     if (start) map.m.setView(start, z && z.radius_m > 400 ? 15 : 16, { animate: false });
     const color = cssVar('--accent');
     map.editCircle = L.circle(map.m.getCenter(), { radius: 200, color, weight: 2, dashArray: '6 6', fillColor: color, fillOpacity: 0.12, interactive: false }).addTo(map.m);
     setRadius(z ? z.radius_m : 200);
     positionPin();
+    renderVisits(z).catch(() => {});
   }
 
   // keep the pin visible above the bottom sheet, and move the map center to match
@@ -1640,6 +1673,7 @@
     endZoneEdit();
     renderZones();
     toast(editingId ? t('toast_zone_updated') : t('toast_zone_saved'));
+    showCheck();
   }
 
   // Search a place by name (OpenStreetMap / Nominatim), nearest to Erbil first
@@ -1786,7 +1820,7 @@
     const key = best.c[0] + ',' + best.c[1];
     if (cams.warned[key] && Date.now() - cams.warned[key] < 5 * 60e3) return;
     cams.warned[key] = Date.now();
-    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+    if (navigator.vibrate) vibe([120, 60, 120]);
     if (!voiceOn()) beep('cam');
     say((lang) => best.c[2] ? tIn(lang, 'v_cam_limit', { n: best.c[2] }) : tIn(lang, 'v_cam'), null, false, 2);
     toast(best.c[2] ? t('cam_ahead_limit', { d: fmtDistance(best.d), n: best.c[2] }) : t('cam_ahead', { d: fmtDistance(best.d) }));
@@ -1825,7 +1859,7 @@
     act.today.s += n;
     act.today.h[now.getHours()] += n;
     if (act.today.lm !== minute) { act.today.lm = minute; act.today.m++; }
-    if (before < stepGoal() && act.today.s >= stepGoal()) { toast(t('goal_done')); if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]); }
+    if (before < stepGoal() && act.today.s >= stepGoal()) { toast(t('goal_done')); if (navigator.vibrate) vibe([80, 60, 80, 60, 160]); }
     clearTimeout(act.saveTimer); act.saveTimer = setTimeout(savePhoneSteps, 3000);
     if (state.tab === 'history' && !act.drawTimer) act.drawTimer = setTimeout(() => { act.drawTimer = null; renderActivity(); }, 1000);
   }
@@ -2058,7 +2092,7 @@
     if (over) {
       if (drive.trip) drive.trip.over.add(ahead.key);
       const o = drive.overSaid[ahead.key] || (drive.overSaid[ahead.key] = { n: 0, at: 0 });
-      if (o.n < 2 && Date.now() - o.at > 20000) { o.n++; o.at = Date.now(); if (voiceOn()) say('v_slow', { n: ahead.limit }, false, 2); else beep('over'); if (navigator.vibrate) navigator.vibrate(200); }
+      if (o.n < 2 && Date.now() - o.at > 20000) { o.n++; o.at = Date.now(); if (voiceOn()) say('v_slow', { n: ahead.limit }, false, 2); else beep('over'); if (navigator.vibrate) vibe(200); }
     }
     drive.hideTimer = setTimeout(() => { el.hidden = true; }, 15000);   // no news from the GPS: hide it
   }
@@ -2662,6 +2696,7 @@
     saveReminders(reminders().concat({ id: Date.now().toString(36), z: $('#rem-zone').value, when, text: text.slice(0, 80) }));
     closeModal($('#rem-view'));
     toast(t('rem_saved'));
+    showCheck();
   }
   const remFired = {};
   function fireReminders(zone, when) {
@@ -2708,7 +2743,7 @@
     $('#night-view').hidden = false;
     addAlert('night', t('night_alert', { b: tr.name || tr.device_code }));
     beep('over'); say('v_night');
-    if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+    if (navigator.vibrate) vibe([300, 100, 300, 100, 300]);
     clearInterval(ng.tick);
     ng.tick = setInterval(() => { left--; show(); if (left <= 0) nightAnswer(false, true); }, 1000);
   }
@@ -3104,6 +3139,659 @@
     if (!sec) return;
     if (state.snap !== 'full') setSnap('full');
     setTimeout(() => sec.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 260);
+  }
+
+  // =====================================================================
+  // REDESIGN 3 — polish and extra features (History, Safe zones, Account)
+  // =====================================================================
+  // ---- vibration: one switch for every buzz in the app
+  const vibeOn = () => localStorage.getItem('trackly-vibe') !== '0';
+  function vibe(p) { if (vibeOn() && navigator['vibrate']) { try { navigator['vibrate'](p); } catch (e) { /* not allowed */ } } }
+  function renderVibe() { if ($('#vibe-switch')) $('#vibe-switch').setAttribute('aria-checked', String(vibeOn())); }
+  function toggleVibe() { localStorage.setItem('trackly-vibe', vibeOn() ? '0' : '1'); syncSettings(); renderVibe(); vibe(15); }
+
+  // ---- location points of the last N days (shared, kept 10 minutes)
+  const ptsCache = {};
+  async function recentPts(days, trackerId) {
+    const id = trackerId || (state.tracker && state.tracker.id);
+    if (!id) return [];
+    const key = id + ':' + days, c = ptsCache[key];
+    if (c && Date.now() - c.at < 10 * 60e3) return c.pts;
+    const since = new Date(Date.now() - days * 86400e3).toISOString();
+    const { data } = await sb.from('locations').select('lat, lng, battery, created_at').eq('tracker_id', id)
+      .gte('created_at', since).order('created_at', { ascending: true }).limit(20000);
+    ptsCache[key] = { at: Date.now(), pts: data || [] };
+    return ptsCache[key].pts;
+  }
+  // metres moved per day (GPS jitter under 15 m and jumps over 150 km/h left out)
+  function metersByDay(pts) {
+    const out = {};
+    for (let i = 1; i < pts.length; i++) {
+      const d = distanceM(pts[i - 1], pts[i]), s = (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000;
+      if (d < 15 || s <= 0 || d / s * 3.6 > 150) continue;
+      const k = dayKey(pts[i].created_at);
+      out[k] = (out[k] || 0) + d;
+    }
+    return out;
+  }
+
+  // ---- a check mark that draws itself after saving
+  function showCheck() {
+    let el = $('#r3-check');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'r3-check'; el.className = 'r3-check'; el.setAttribute('aria-hidden', 'true');
+      el.innerHTML = '<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M15 27l7 7 15-16"/></svg>';
+      document.body.appendChild(el);
+    }
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    clearTimeout(showCheck._t);
+    showCheck._t = setTimeout(() => el.classList.remove('show'), 1100);
+  }
+
+  // ---- line-drawn illustrations for empty screens
+  function illo(kind) {
+    const a = '<svg class="r3-illo-svg" viewBox="0 0 120 84" aria-hidden="true">';
+    if (kind === 'history') return a + '<path class="soft" d="M10 74h100"/><path d="M24 58c10-18 24 6 36-10s22-20 36-8" stroke-dasharray="2 7"/><path d="M24 40c-6 0-10 5-10 10 0 7 10 16 10 16s10-9 10-16c0-5-4-10-10-10z"/><circle cx="24" cy="50" r="3"/><path d="M96 22c-6 0-10 5-10 10 0 7 10 16 10 16s10-9 10-16c0-5-4-10-10-10z"/><circle cx="96" cy="32" r="3"/></svg>';
+    if (kind === 'zones') return a + '<circle class="soft" cx="60" cy="44" r="34" stroke-dasharray="3 7"/><path d="M44 46l16-14 16 14"/><path d="M48 43v18h24V43"/><path d="M56 61v-9h8v9"/></svg>';
+    return a + '<path d="M60 14a16 16 0 0 1 16 16v10l6 9H38l6-9V30a16 16 0 0 1 16-16z"/><path d="M54 55a6 6 0 0 0 12 0"/><path class="soft" d="M84 18h8l-8 9h8M94 6h6l-6 7h6"/><path class="soft" d="M10 74h100"/></svg>';
+  }
+
+  // ---- big titles shrink into a small blurred bar while scrolling (like iPhone)
+  let stickyRun = () => {};
+  function setupStickyTitles() {
+    const sheet = $('#sheet');
+    let raf = 0;
+    stickyRun = () => {
+      raf = 0;
+      const p = $('#panel-' + state.tab);
+      if (!p || p.hidden || !p.classList.contains('r2-panel')) return;
+      const title = p.querySelector('.r2-title'), bar = p.querySelector('.r3-bar');
+      if (!title || !bar) return;
+      const k = Math.max(0, Math.min(1, sheet.scrollTop / 56));
+      title.style.transform = reduceMotion() ? '' : 'scale(' + (1 - 0.16 * k).toFixed(3) + ')';
+      title.style.opacity = String(1 - k);
+      bar.style.opacity = String(k < 0.6 ? 0 : (k - 0.6) / 0.4);
+      bar.classList.toggle('on', k > 0.9);
+    };
+    sheet.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(stickyRun); }, { passive: true });
+  }
+
+  // ---- theme / light-dark: a circle of the new colours opens from where you tapped
+  function revealChange(e, change) {
+    if (reduceMotion()) { change(); return; }
+    if (!document.startViewTransition) {
+      change();
+      document.body.classList.remove('r3-fade'); void document.body.offsetWidth; document.body.classList.add('r3-fade');
+      return;
+    }
+    const x = e && e.clientX ? e.clientX : innerWidth / 2, y = e && e.clientY ? e.clientY : innerHeight / 2;
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    document.documentElement.classList.add('r3-reveal');
+    const vt = document.startViewTransition(change);
+    vt.ready.then(() => document.documentElement.animate(
+      { clipPath: ['circle(0px at ' + x + 'px ' + y + 'px)', 'circle(' + r + 'px at ' + x + 'px ' + y + 'px)'] },
+      { duration: 480, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', pseudoElement: '::view-transition-new(root)' })).catch(() => {});
+    vt.finished.finally(() => document.documentElement.classList.remove('r3-reveal'));
+  }
+
+  // ---- small floating menu (long-press)
+  function closeMenu() {
+    const m = $('#r3-menu'), bg = $('#r3-menu-bg');
+    if (bg) bg.remove();
+    if (!m) return;
+    m.classList.add('out');
+    setTimeout(() => m.remove(), reduceMotion() ? 0 : 140);
+  }
+  function openMenu(x, y, items) {
+    closeMenu();
+    ['#r3-menu', '#r3-menu-bg'].forEach((s) => { const old = $(s); if (old) old.remove(); });
+    const bg = document.createElement('div');
+    bg.id = 'r3-menu-bg'; bg.className = 'r3-menu-bg';
+    bg.addEventListener('pointerdown', (e) => { e.preventDefault(); closeMenu(); });
+    const m = document.createElement('div');
+    m.id = 'r3-menu'; m.className = 'r3-menu'; m.setAttribute('role', 'menu');
+    items.forEach((it) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'menuitem');
+      if (it.danger) b.className = 'danger';
+      b.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + it.icon + '"/></svg><span></span>';
+      b.querySelector('span').textContent = it.label;
+      b.addEventListener('click', () => { closeMenu(); it.fn(); });
+      m.appendChild(b);
+    });
+    document.body.append(bg, m);
+    const w = m.offsetWidth, h = m.offsetHeight;
+    m.style.left = Math.max(12, Math.min(x - w / 2, innerWidth - w - 12)) + 'px';
+    m.style.top = Math.max(12, Math.min(y + 12, innerHeight - h - 12)) + 'px';
+    m.querySelector('button').focus({ preventScroll: true });
+  }
+
+  // ---- first-time tips (one per tab, shown once)
+  const TIPS = { history: ['#panel-history .r2-head', 'tip_history'], zones: ['#zone-list .zone-item, #zone-add, #zone-list', 'tip_zones'], account: ['.acc-jump', 'tip_account'] };
+  function maybeTip(tab) {
+    const tip = TIPS[tab];
+    if (!tip || localStorage.getItem('trackly-tip-' + tab)) return;
+    setTimeout(() => {
+      if (state.tab !== tab || $('#r3-tip')) return;
+      const target = $(tip[0]);
+      if (!target || !target.offsetParent) return;
+      localStorage.setItem('trackly-tip-' + tab, '1');
+      const el = document.createElement('div');
+      el.id = 'r3-tip'; el.className = 'r3-tip'; el.setAttribute('role', 'status');
+      el.textContent = t(tip[1]);
+      document.body.appendChild(el);
+      const r = target.getBoundingClientRect();
+      el.style.top = Math.min(r.bottom + 10, innerHeight - el.offsetHeight - 90) + 'px';
+      el.style.left = Math.max(16, Math.min(r.left + r.width / 2 - el.offsetWidth / 2, innerWidth - el.offsetWidth - 16)) + 'px';
+      el.style.setProperty('--ax', Math.max(14, Math.min(r.left + r.width / 2 - parseFloat(el.style.left), el.offsetWidth - 14)) + 'px');
+      const gone = () => { el.classList.add('out'); setTimeout(() => el.remove(), 200); document.removeEventListener('pointerdown', gone, true); };
+      document.addEventListener('pointerdown', gone, true);
+      setTimeout(gone, 6000);
+    }, 700);
+  }
+
+  // ---- Esc closes the editor and any open sheet (desktop)
+  function setupEsc() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      const open = (s) => { const el = $(s); return el && !el.hidden; };
+      if ($('#r3-menu')) { closeMenu(); return; }
+      if (open('#mfa-view')) { cancelMfa(); return; }
+      for (const s of ['#cal-view', '#alerts-view', '#rem-view', '#wx-view', '#trip-view', '#finder-view', '#new-view', '#lang-menu', '#confirm-lost']) if (open(s)) { closeModal($(s)); return; }
+      if (open('#search-panel')) { closeSearch(); return; }
+      if (open('#find-view')) { closeFind(); return; }
+      if (open('#report-view')) { closeReport(); return; }
+      if (state.zoneEdit) { endZoneEdit(); return; }
+      if (!$('#style-picker').hidden) $('#style-picker').hidden = true;
+    });
+  }
+
+  // =====================================================================
+  // HISTORY extras
+  // =====================================================================
+  function setHistoryDate(d) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (d > today) return false;
+    const diff = Math.round((today - d) / 86400e3);
+    if (diff <= 1) {
+      state.historyDay = diff; state.historyDate = null; $('#history-date').value = '';
+      $$('#history-days .chip').forEach((x) => x.classList.toggle('active', x.dataset.day === String(diff)));
+    } else {
+      state.historyDate = dayKey(d); $('#history-date').value = state.historyDate;
+      $$('#history-days .chip').forEach((x) => x.classList.toggle('active', x.classList.contains('chip-date')));
+    }
+    loadHistory();
+    return true;
+  }
+  function goHistoryDay(delta) {
+    const [start] = historyRange();
+    const d = new Date(start); d.setDate(d.getDate() + delta);
+    const head = $('#panel-history .r3-titles');
+    if (!setHistoryDate(d)) { vibe(20); if (!reduceMotion()) head.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(' + (delta > 0 === (document.documentElement.dir !== 'rtl') ? -10 : 10) + 'px)' }, { transform: 'translateX(0)' }], { duration: 260 }); return; }
+    if (!reduceMotion()) {
+      const from = (delta > 0) === (document.documentElement.dir !== 'rtl') ? 40 : -40;
+      head.animate([{ transform: 'translateX(' + from + 'px)', opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }], { duration: 280, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+    } else head.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 });
+  }
+  // swipe the header: left = next day, right = previous day (the other way round in right-to-left)
+  function setupDaySwipe() {
+    const head = $('#panel-history .r2-head');
+    let x0 = null, y0 = 0;
+    head.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) return; x0 = e.clientX; y0 = e.clientY; });
+    const end = (e) => {
+      if (x0 === null) return;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      x0 = null;
+      if (Math.abs(dx) < 50 || Math.abs(dy) > Math.abs(dx) * 0.7) return;
+      const rtl = document.documentElement.dir === 'rtl';
+      goHistoryDay((rtl ? dx > 0 : dx < 0) ? 1 : -1);
+    };
+    head.addEventListener('pointerup', end);
+    head.addEventListener('pointercancel', () => { x0 = null; });
+  }
+
+  // ---- month view: each day coloured by how much the bag moved
+  const cal = { month: null, cache: {} };
+  const CKB_WEEK = ['ی', 'د', 'س', 'چ', 'پ', 'ھ', 'ش'];
+  function openCal() {
+    const [start] = historyRange();
+    cal.month = new Date(start.getFullYear(), start.getMonth(), 1);
+    $('#cal-view').hidden = false;
+    renderCal();
+  }
+  function calStep(n) {
+    const m = new Date(cal.month.getFullYear(), cal.month.getMonth() + n, 1);
+    const now = new Date();
+    if (m > new Date(now.getFullYear(), now.getMonth(), 1)) return;
+    cal.month = m;
+    renderCal();
+  }
+  async function renderCal() {
+    const m = cal.month, y = m.getFullYear(), mo = m.getMonth();
+    $('#cal-title').textContent = state.lang === 'ckb' ? CKB_MONTHS[mo] + ' ' + y : m.toLocaleDateString(dateLocale(), { month: 'long', year: 'numeric' });
+    const now = new Date();
+    $('[data-action="cal-next"]').disabled = y === now.getFullYear() && mo === now.getMonth();
+    // week starts Saturday in Kurdish / Arabic, Monday in English
+    const first = state.lang === 'en' ? 1 : 6;
+    const wk = $('#cal-week');
+    wk.innerHTML = '';
+    for (let i = 0; i < 7; i++) {
+      const wd = (first + i) % 7, d = new Date(2024, 0, 7 + wd);          // 7 Jan 2024 was a Sunday
+      const s = document.createElement('span');
+      s.textContent = state.lang === 'ckb' ? CKB_WEEK[wd] : d.toLocaleDateString(dateLocale(), { weekday: 'narrow' });
+      wk.appendChild(s);
+    }
+    const grid = $('#cal-grid');
+    grid.innerHTML = '';
+    const days = new Date(y, mo + 1, 0).getDate(), lead = (new Date(y, mo, 1).getDay() - first + 7) % 7;
+    for (let i = 0; i < lead; i++) grid.appendChild(document.createElement('span'));
+    const [sel] = historyRange(), today = new Date(); today.setHours(0, 0, 0, 0);
+    const btns = [];
+    for (let d = 1; d <= days; d++) {
+      const date = new Date(y, mo, d);
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'cal-day l0';
+      b.textContent = d;
+      b.disabled = date > today;
+      if (+date === +today) b.classList.add('today');
+      if (dayKey(date) === dayKey(sel)) b.classList.add('sel');
+      b.setAttribute('aria-label', longDate(date));
+      b.addEventListener('click', () => { closeModal($('#cal-view')); setHistoryDate(date); });
+      grid.appendChild(b);
+      btns.push([dayKey(date), b]);
+    }
+    // how much it moved each day (one request per month, kept)
+    const key = state.tracker.id + ':' + y + '-' + mo;
+    let per = cal.cache[key];
+    if (!per) {
+      grid.classList.add('loading');
+      const end = new Date(y, mo + 1, 1);
+      const { data } = await sb.from('locations').select('lat, lng, created_at').eq('tracker_id', state.tracker.id)
+        .gte('created_at', new Date(y, mo, 1).toISOString()).lt('created_at', end.toISOString()).order('created_at', { ascending: true }).limit(20000);
+      per = cal.cache[key] = metersByDay(data || []);
+      grid.classList.remove('loading');
+      if (cal.month !== m) return;
+    }
+    const max = Math.max(1, ...Object.values(per));
+    btns.forEach(([k, b]) => {
+      const v = per[k] || 0;
+      const lv = !v ? 0 : v < max * 0.25 ? 1 : v < max * 0.5 ? 2 : v < max * 0.75 ? 3 : 4;
+      b.className = b.className.replace(/\bl\d\b/, 'l' + lv);
+      if (v) b.setAttribute('aria-label', b.getAttribute('aria-label') + ' · ' + fmtDistance(v));
+    });
+  }
+
+  // ---- highlight cards for the day
+  async function renderHighlights(pts, stops) {
+    const box = $('#hist-highlights');
+    box.innerHTML = '';
+    box.hidden = pts.length < 2;
+    if (box.hidden) return;
+    const cards = [];
+    const add = (icon, label, value, sub, tone) => cards.push({ icon, label, value, sub, tone });
+    // longest stop
+    const longest = stops.slice().sort((a, b) => b.mins - a.mins)[0];
+    if (longest) add('M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', t('hl_longest'), fmtDuration(longest.mins), '…', 'a', longest);
+    // farthest from home (or from where the day started)
+    const home = state.zones.find((z) => z.kind === 'home');
+    const base = home || pts[0];
+    let far = null;
+    for (const p of pts) { const d = distanceM(base, p); if (!far || d > far.d) far = { d, p }; }
+    if (far && far.d > 100) add('M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z', home ? t('hl_far_home') : t('hl_far_start'), fmtDistance(far.d), t('hl_at', { t: clockTime(far.p.created_at) }), 'b');
+    // first move of the day
+    const fm = pts.find((p) => distanceM(pts[0], p) > 150);
+    if (fm) add('M5 12h14M13 6l6 6-6 6', t('hl_first'), clockTime(fm.created_at), t('hl_first_sub'), 'c');
+    // most active hour
+    const hrs = new Array(24).fill(0);
+    for (let i = 1; i < pts.length; i++) {
+      const d = distanceM(pts[i - 1], pts[i]), s = (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000;
+      if (d < 15 || s <= 0 || d / s * 3.6 > 150) continue;
+      hrs[new Date(pts[i].created_at).getHours()] += d;
+    }
+    const top = hrs.indexOf(Math.max(...hrs));
+    if (hrs[top] > 0) add('M4 20V10M10 20V4M16 20v-7M22 20H2', t('hl_hour'), String(top).padStart(2, '0') + ':00–' + String((top + 1) % 24).padStart(2, '0') + ':00', fmtDistance(hrs[top]), 'd');
+    cards.forEach((c, i) => {
+      const el = document.createElement('div');
+      el.className = 'hl-card hl-' + c.tone;
+      el.innerHTML = '<span class="hl-ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + c.icon + '"/></svg></span><span class="hl-label"></span><strong></strong><span class="hl-sub"></span>';
+      el.querySelector('.hl-label').textContent = c.label;
+      el.querySelector('strong').textContent = c.value;
+      el.querySelector('.hl-sub').textContent = c.sub;
+      box.appendChild(el);
+      if (i === 0 && longest) stopName(longest).then((nm) => { el.querySelector('.hl-sub').textContent = nm; });
+    });
+    box.hidden = !cards.length;
+  }
+
+  // ---- "vs last week" under the distance tile
+  async function loadTrend(meters, start) {
+    const el = $('#hist-trend');
+    el.hidden = true;
+    const s = new Date(start); s.setDate(s.getDate() - 7);
+    const e = new Date(s); e.setDate(e.getDate() + 1);
+    const { data } = await sb.from('locations').select('lat, lng, created_at').eq('tracker_id', state.tracker.id)
+      .gte('created_at', s.toISOString()).lt('created_at', e.toISOString()).order('created_at', { ascending: true }).limit(5000);
+    const before = Object.values(metersByDay(data || [])).reduce((a, b) => a + b, 0);
+    const [now] = historyRange();
+    if (+now !== +start || before < 200) return;
+    const pct = Math.round((meters - before) / before * 100);
+    el.className = 'stat-sub r3-trend ' + (pct >= 0 ? 'up' : 'down');
+    el.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct) + '% ' + t('vs_last_week');
+    el.hidden = false;
+  }
+
+  // ---- replay: ticks where the stops are, a tiny buzz when passing one
+  const rp3 = { stops: [], last: 0 };
+  function setReplayTicks(pts, stops) {
+    const box = $('#replay-ticks');
+    box.innerHTML = '';
+    rp3.stops = []; rp3.last = 0;
+    if (pts.length < 2) return;
+    stops.forEach((s) => {
+      let i = pts.findIndex((p) => p.created_at >= s.from);
+      if (i < 0) return;
+      rp3.stops.push(i);
+      const tk = document.createElement('i');
+      tk.style.left = (i / (pts.length - 1) * 100) + '%';
+      box.appendChild(tk);
+    });
+  }
+  function replayPassStop(k) {
+    const a = Math.min(rp3.last, k), b = Math.max(rp3.last, k);
+    if (k !== rp3.last && rp3.stops.some((i) => i > a && i <= b)) vibe(8);
+    rp3.last = k;
+  }
+
+  // ---- "Share my day": a picture of the route with distance and steps
+  async function shareDay() {
+    const pts = state.historyPts;
+    if (!pts || pts.length < 2) { toast(t('no_trips')); return; }
+    const [start] = historyRange();
+    try { await Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 1500))]); } catch (e) { /* draw with what's there */ }
+    const W = 1080, H = 1350, c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const col = (v, f) => cssVar(v) || f;
+    const bg = col('--bg', '#f6f4ef'), card = col('--card', '#fff'), text = col('--text', '#111'), sub = col('--text-2', '#666'), acc = col('--accent', '#b8862e'), prim = col('--primary', '#111'), onp = col('--on-primary', '#fff'), line = col('--line', '#ddd');
+    const rtl = document.documentElement.dir === 'rtl';
+    const font = (w, s) => w + ' ' + s + 'px ' + (rtl ? '"Noto Sans Arabic", sans-serif' : 'Sora, sans-serif');
+    const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+    const say = (str, x, y, f, color, align) => { g.font = f; g.fillStyle = color; g.direction = rtl ? 'rtl' : 'ltr'; g.textAlign = align || (rtl ? 'right' : 'left'); g.fillText(str, x, y); };
+    const L0 = rtl ? W - 120 : 120;
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    rr(60, 60, W - 120, H - 120, 56); g.fillStyle = card; g.fill();
+    say(t('my_day'), L0, 190, font('800', 72), text);
+    say(historyDayLabel(start), L0, 250, font('600', 36), sub);
+    // the route, fitted in a box
+    const bx = 120, by = 300, bw = W - 240, bh = 600;
+    rr(bx, by, bw, bh, 40); g.fillStyle = bg; g.fill();
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    const k = Math.cos(pts[0].lat * Math.PI / 180);
+    const xy = pts.map((p) => [p.lng * k, -p.lat]);
+    xy.forEach(([x, y]) => { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); });
+    const sc = Math.min((bw - 120) / Math.max(1e-6, maxX - minX), (bh - 120) / Math.max(1e-6, maxY - minY));
+    const ox = bx + bw / 2 - (minX + maxX) / 2 * sc, oy = by + bh / 2 - (minY + maxY) / 2 * sc;
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.strokeStyle = acc; g.lineWidth = 14;
+    g.beginPath(); xy.forEach(([x, y], i) => (i ? g.lineTo(x * sc + ox, y * sc + oy) : g.moveTo(x * sc + ox, y * sc + oy))); g.stroke();
+    const dot = (p, r, fill, ring) => { g.beginPath(); g.arc(p[0] * sc + ox, p[1] * sc + oy, r, 0, Math.PI * 2); g.fillStyle = fill; g.fill(); g.lineWidth = 8; g.strokeStyle = ring; g.stroke(); };
+    dot(xy[0], 18, card, acc);
+    dot(xy[xy.length - 1], 22, prim, card);
+    // numbers
+    const steps = dayActivity(dayKey(start)).steps;
+    const stats = [[$('#hist-km').textContent, t('hist_dist')], [fmtNum(steps), t('steps')], [$('#hist-stops').textContent, t('hist_stops')]];
+    const cw = (W - 240) / 3;
+    stats.forEach(([v, l], i) => {
+      const cx = rtl ? W - 120 - cw * i - cw / 2 : 120 + cw * i + cw / 2;
+      say(v, cx, 1030, font('800', 64), text, 'center');
+      say(l, cx, 1080, font('600', 30), sub, 'center');
+    });
+    g.fillStyle = line; g.fillRect(120, 1140, W - 240, 2);
+    // logo
+    const lx = rtl ? W - 120 - 64 : 120, ly = 1180;
+    rr(lx, ly, 64, 64, 18); g.fillStyle = prim; g.fill();
+    g.strokeStyle = onp; g.lineWidth = 5;
+    g.beginPath(); g.moveTo(lx + 18, ly + 26); g.lineTo(lx + 46, ly + 26); g.lineTo(lx + 49, ly + 50); g.lineTo(lx + 15, ly + 50); g.closePath(); g.stroke();
+    g.beginPath(); g.arc(lx + 32, ly + 24, 8, Math.PI, 0); g.stroke();
+    say('Trackly', rtl ? lx - 20 : lx + 88, ly + 46, '800 40px Sora, sans-serif', text);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    if (!blob) return;
+    const name = 'trackly-' + dayKey(start) + '.png';
+    const file = new File([blob], name, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Trackly', text: t('my_day') + ' · ' + historyDayLabel(start) }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(t('day_saved'));
+  }
+
+  // =====================================================================
+  // SAFE ZONES extras
+  // =====================================================================
+  // time spent in each zone over the last 7 days
+  state.zoneHours = {};
+  async function loadZoneHours() {
+    const pts = await recentPts(7);
+    const out = {};
+    for (const z of state.zones) {
+      let s = 0;
+      for (let i = 1; i < pts.length; i++) {
+        if (distanceM(pts[i - 1], z) > z.radius_m || distanceM(pts[i], z) > z.radius_m) continue;
+        s += Math.min(7200, (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000);
+      }
+      out[z.id] = s / 60;
+    }
+    const changed = JSON.stringify(out) !== JSON.stringify(state.zoneHours);
+    state.zoneHours = out;
+    if (changed && state.tab === 'zones' && !state.zoneEdit) renderZones();
+  }
+  function zoneWeekText(z) {
+    const m = state.zoneHours[z.id];
+    if (!m || m < 5) return '';
+    return t('zone_week', { t: m >= 60 ? fmtDuration(Math.round(m / 60) * 60) : fmtDuration(m) });
+  }
+  // swipe a zone card to the side → Edit / Delete; long-press → small menu
+  function wireZoneCard(li, slide, z) {
+    const rtl = () => document.documentElement.dir === 'rtl';
+    const W = 148;
+    let x0 = null, y0 = 0, dx = 0, swiping = false, press = null, base = 0;
+    const set = (x, anim) => { slide.style.transition = anim ? '' : 'none'; slide.style.transform = x ? 'translateX(' + x + 'px)' : ''; };
+    const close = () => { li.classList.remove('open'); set(0, true); };
+    li._close = close;
+    slide.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.switch')) return;
+      x0 = e.clientX; y0 = e.clientY; dx = 0; swiping = false;
+      base = li.classList.contains('open') ? (rtl() ? W : -W) : 0;
+      clearTimeout(press);
+      press = setTimeout(() => {
+        press = null;
+        if (swiping) return;
+        li.dataset.block = '1'; x0 = null;
+        vibe(15);
+        zoneMenu(z, e.clientX, e.clientY);
+      }, 520);
+    });
+    slide.addEventListener('pointermove', (e) => {
+      if (x0 === null) return;
+      dx = e.clientX - x0;
+      const dy = e.clientY - y0;
+      if (!swiping && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) { clearTimeout(press); press = null; }
+      if (!swiping && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+        swiping = true;
+        $$('#zone-list .zone-item.open').forEach((o) => { if (o !== li && o._close) o._close(); });
+      }
+      if (swiping) {
+        const lim = rtl() ? [0, W + 20] : [-W - 20, 0];
+        set(Math.max(lim[0], Math.min(lim[1], base + dx)), false);
+      }
+    });
+    const up = () => {
+      clearTimeout(press); press = null;
+      if (x0 === null) return;
+      x0 = null;
+      if (!swiping) return;
+      li.dataset.block = '1';
+      const pos = base + dx, openIt = rtl() ? pos > W / 2 : pos < -W / 2;
+      li.classList.toggle('open', openIt);
+      set(openIt ? (rtl() ? W : -W) : 0, true);
+      setTimeout(() => { li.dataset.block = ''; }, 50);
+    };
+    slide.addEventListener('pointerup', up);
+    slide.addEventListener('pointercancel', up);
+    slide.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+  function zoneMenu(z, x, y) {
+    openMenu(x, y, [
+      { label: t('edit_zone'), icon: 'M4 20h4l11-11-4-4L4 16zM14 6l4 4', fn: () => startZoneEdit(z) },
+      { label: z.enabled ? t('zone_turn_off') : t('zone_turn_on'), icon: 'M12 3v9M6.3 6.3a8 8 0 1 0 11.4 0', fn: () => toggleZone(z) },
+      { label: t('delete'), icon: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3', danger: true, fn: () => deleteZone(z) }
+    ]);
+  }
+
+  // smart suggestion: a place the bag sleeps at (Home) or spends weekdays at (Work / School)
+  async function loadSuggestion() {
+    const box = $('#zone-suggest');
+    if (!state.tracker || !box) return;
+    const key = 'trackly-sugg-' + state.tracker.id;
+    let c = null;
+    try { c = JSON.parse(localStorage.getItem(key)); } catch (e) { /* none */ }
+    if (!c || Date.now() - c.at > 12 * 3600e3) {
+      const pts = await recentPts(30);
+      const spots = [];
+      for (const s of findStops(pts)) {
+        let sp = spots.find((x) => distanceM(x, s) < 150);
+        if (!sp) { sp = { lat: s.lat, lng: s.lng, nights: new Set(), days: new Set(), from: s.from, to: s.to }; spots.push(sp); }
+        const a = new Date(s.from), b = new Date(s.to);
+        for (let d = new Date(a.getFullYear(), a.getMonth(), a.getDate()); d <= b; d.setDate(d.getDate() + 1)) {
+          const t3 = new Date(d); t3.setHours(3, 0, 0, 0);
+          if (a <= t3 && b >= t3) sp.nights.add(dayKey(d));
+          const wd = d.getDay();
+          if (wd !== 5 && wd !== 6) {                               // the work week in Iraq: Sunday–Thursday
+            const d9 = new Date(d); d9.setHours(9, 0, 0, 0);
+            const d15 = new Date(d); d15.setHours(15, 0, 0, 0);
+            if (Math.min(b, d15) - Math.max(a, d9) >= 3 * 3600e3) sp.days.add(dayKey(d));
+          }
+        }
+      }
+      const list = spots.map((sp) => ({ lat: +sp.lat.toFixed(5), lng: +sp.lng.toFixed(5), nights: sp.nights.size, days: sp.days.size, from: sp.from, to: sp.to }))
+        .filter((sp) => sp.nights >= 3 || sp.days >= 3);
+      c = { at: Date.now(), list };
+      try { localStorage.setItem(key, JSON.stringify(c)); } catch (e) { /* full */ }
+    }
+    let no = [];
+    try { no = JSON.parse(localStorage.getItem('trackly-sugg-no')) || []; } catch (e) { /* none */ }
+    const hasHome = state.zones.some((z) => z.kind === 'home');
+    const pick = c.list.map((sp) => Object.assign({}, sp, { kind: sp.nights >= 3 && !hasHome ? 'home' : (sp.days >= 3 ? 'work' : null) }))
+      .find((sp) => sp.kind && !no.includes(sp.lat.toFixed(3) + ',' + sp.lng.toFixed(3)) && !state.zones.some((z) => distanceM(z, sp) <= z.radius_m + 100));
+    box.hidden = !pick;
+    if (!pick) return;
+    box.dataset.lat = pick.lat; box.dataset.lng = pick.lng; box.dataset.kind = pick.kind;
+    $('#zs-title').textContent = pick.kind === 'home' ? t('sugg_home') : t('sugg_work');
+    $('#zs-text').textContent = pick.kind === 'home' ? t('sugg_home_sub', { n: pick.nights }) : t('sugg_work_sub', { n: pick.days });
+    $('#zs-ic').innerHTML = kindIcon(pick.kind);
+    stopName({ lat: pick.lat, lng: pick.lng, from: pick.from, to: pick.to }).then((nm) => { if (nm && nm !== t('stop')) $('#zs-text').textContent += ' · ' + nm; }).catch(() => {});
+  }
+  function suggestAnswer(yes) {
+    const box = $('#zone-suggest');
+    const lat = Number(box.dataset.lat), lng = Number(box.dataset.lng), kind = box.dataset.kind;
+    box.hidden = true;
+    if (yes) { startZoneEdit(null, { lat, lng, kind, name: t('kind_' + kind) }); return; }
+    let no = [];
+    try { no = JSON.parse(localStorage.getItem('trackly-sugg-no')) || []; } catch (e) { /* none */ }
+    no.push(lat.toFixed(3) + ',' + lng.toFixed(3));
+    localStorage.setItem('trackly-sugg-no', JSON.stringify(no.slice(-30)));
+  }
+  // editor: "Arrived 8:02 · Left 14:10" from the last 2 weeks
+  async function renderVisits(z) {
+    const box = $('#zone-visits');
+    box.hidden = true;
+    if (!z) return;
+    const pts = await recentPts(14);
+    if (!state.zoneEdit || state.zoneEdit.id !== z.id) return;
+    const r = Number($('#zone-radius').value) || z.radius_m;
+    const visits = [];
+    let cur = null;
+    for (const p of pts) {
+      const inside = distanceM(p, z) <= r;
+      if (inside && !cur) cur = { a: p.created_at, b: p.created_at };
+      else if (inside) cur.b = p.created_at;
+      else if (cur) { visits.push(cur); cur = null; }
+    }
+    if (cur) visits.push(Object.assign(cur, { now: true }));
+    const list = visits.filter((v) => v.now || new Date(v.b) - new Date(v.a) >= 5 * 60e3).reverse().slice(0, 5);
+    const ul = box.querySelector('ul');
+    ul.innerHTML = '';
+    list.forEach((v) => {
+      const li = document.createElement('li');
+      const day = document.createElement('strong');
+      const d = new Date(v.a), today = new Date(); today.setHours(0, 0, 0, 0);
+      const diff = Math.round((today - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400e3);
+      day.textContent = diff === 0 ? t('today') : diff === 1 ? t('yesterday') : longDate(d);
+      const tx = document.createElement('span');
+      tx.textContent = t('visit_arrived', { t: clockTime(v.a) }) + ' · ' + (v.now ? t('visit_still') : t('visit_left', { t: clockTime(v.b) }));
+      li.append(day, tx);
+      ul.appendChild(li);
+    });
+    box.hidden = !list.length;
+  }
+
+  // =====================================================================
+  // ACCOUNT extras
+  // =====================================================================
+  function sendTestAlert() {
+    addAlert('test', t('test_alert_msg'));
+    showCheck();
+  }
+  // a small 7-day battery chart for each bag, and how long it will last
+  async function renderBatteryCards() {
+    const box = $('#batt-cards');
+    if (!box) return;
+    if (!box.children.length) state.trackers.forEach(() => { const d = document.createElement('div'); d.className = 'acc-item r3-skel-row'; box.appendChild(d); });
+    const rows = await Promise.all(state.trackers.map(async (tr) => ({ tr, pts: (await recentPts(7, tr.id)).filter((p) => typeof p.battery === 'number') })));
+    box.innerHTML = '';
+    rows.forEach(({ tr, pts }) => {
+      const row = document.createElement('div');
+      row.className = 'acc-item batt-row';
+      const last = pts[pts.length - 1];
+      // drop per hour over the last day → time left
+      let left = t('batt_unknown');
+      const dayAgo = Date.now() - 24 * 3600e3, recent = pts.filter((p) => new Date(p.created_at) >= dayAgo);
+      if (last && recent.length >= 2) {
+        const a = recent[0], hrs = (new Date(last.created_at) - new Date(a.created_at)) / 3600e3, drop = a.battery - last.battery;
+        if (drop < 0) left = t('batt_charging');
+        else if (hrs >= 1 && drop >= 2) { const h = last.battery / (drop / hrs); left = h >= 48 ? t('batt_days', { n: Math.round(h / 24) }) : t('batt_hours', { n: Math.max(1, Math.round(h)) }); }
+        else left = t('batt_steady');
+      }
+      const W = 120, H = 36, t0 = Date.now() - 7 * 86400e3;
+      const ptsSvg = pts.map((p) => [((new Date(p.created_at) - t0) / (7 * 86400e3) * W).toFixed(1), (H - 3 - p.battery / 100 * (H - 6)).toFixed(1)]);
+      const poly = ptsSvg.map((q) => q.join(',')).join(' ');
+      row.innerHTML = '<span class="bag-dot"></span><span class="acc-txt"><strong></strong><span></span></span>' +
+        '<svg class="batt-spark" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">' +
+        (ptsSvg.length > 1 ? '<polygon points="' + ptsSvg[0][0] + ',' + H + ' ' + poly + ' ' + ptsSvg[ptsSvg.length - 1][0] + ',' + H + '"/><polyline points="' + poly + '"/>' : '<line x1="0" y1="' + (H - 2) + '" x2="' + W + '" y2="' + (H - 2) + '"/>') + '</svg>';
+      row.querySelector('.bag-dot').style.background = bagColor(tr);
+      row.querySelector('strong').textContent = (tr.name || tr.device_code) + (last ? ' · ' + last.battery + '%' : '');
+      row.querySelector('.acc-txt span').textContent = left;
+      row.setAttribute('aria-label', row.querySelector('strong').textContent + ' · ' + left);
+      box.appendChild(row);
+    });
+  }
+
+  // ---- run when a tab opens (after it's on screen, so opening stays instant)
+  function r3OnTab(tab) {
+    const p = $('#panel-' + tab);
+    if (p) { const ti = p.querySelector('.r2-title'), bar = p.querySelector('.r3-bar'); if (ti) { ti.style.transform = ''; ti.style.opacity = ''; } if (bar) bar.style.opacity = '0'; }
+    closeMenu();
+    requestAnimationFrame(stickyRun);
+    maybeTip(tab);
+    setTimeout(() => {
+      if (state.tab !== tab) return;
+      if (tab === 'zones') { loadZoneHours().catch(() => {}); loadSuggestion().catch(() => {}); }
+      if (tab === 'account') renderBatteryCards().catch(() => {});
+    }, 60);
   }
 
   // =====================================================================
@@ -3750,7 +4438,7 @@
     localStorage.setItem('trackly-alerts', JSON.stringify(list.slice(0, 30)));
     renderAlerts();
     toast(text);
-    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    if (navigator.vibrate) vibe([60, 40, 60]);
     // a phone notification too, if the user allowed them
     try {
       if (window.Notification && Notification.permission === 'granted' && navigator.serviceWorker) {
@@ -3792,7 +4480,7 @@
     if (!ul) return;
     const list = await allAlerts();   // the server's alerts and this phone's (reminders, new place, night guard…)
     ul.innerHTML = '';
-    if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_alerts'); ul.appendChild(li); return; }
+    if (!list.length) { const li = document.createElement('li'); li.className = 'empty r2-empty'; li.innerHTML = '<span class="r3-illo">' + illo('alerts') + '</span><strong></strong>'; li.querySelector('strong').textContent = t('no_alerts'); ul.appendChild(li); return; }
     list.slice(0, max || 3).forEach((a) => {
       const li = document.createElement('li');
       li.className = 'alert-item ' + a.kind;
@@ -3849,7 +4537,7 @@
       else if (speed < -0.6) snap = state.snap === 'peek' ? 'half' : 'full';
       else snap = h < vh * 0.3 ? 'peek' : (h < vh * 0.68 ? 'half' : 'full');
       setSnap(snap);
-      if (navigator.vibrate) navigator.vibrate(8);
+      if (navigator.vibrate) vibe(8);
     };
     handle.addEventListener('pointerup', end);
     handle.addEventListener('pointercancel', end);
@@ -3883,7 +4571,7 @@
       y0 = null;
       if (!go) { ptr.style.height = ''; ptr.classList.remove('ready'); return; }
       ptr.classList.add('busy');
-      if (navigator.vibrate) navigator.vibrate(10);
+      if (navigator.vibrate) vibe(10);
       if (state.tab === 'history') await loadHistory();
       else if (state.tracker) {
         const { data } = await sb.from('safe_zones').select('*').eq('tracker_id', state.tracker.id).order('created_at');
@@ -3918,7 +4606,7 @@
     if (!state.tracker) return;
     const { error } = await sb.rpc('request_buzz', { p_tracker: state.tracker.id });
     if (error) { toast(errorText(error)); return; }
-    if (navigator.vibrate) navigator.vibrate(80);
+    if (navigator.vibrate) vibe(80);
     toast(state.tracker.mode === 'lost' ? t('buzz_sent_lost') : t('buzz_sent'));
   }
 
@@ -4199,6 +4887,7 @@
     if (opt) opt.textContent = tr.name || tr.device_code;
     renderBags(); renderMapPanel();
     toast(t('saved'));
+    showCheck();
   }
 
   // =====================================================================
@@ -4311,7 +5000,7 @@
       if (!text) return;
       const p = parsePairText(text);
       if (!p) { $('#scan-msg').textContent = t('scan_not_trackly'); return; }
-      if (navigator.vibrate) navigator.vibrate(60);
+      if (navigator.vibrate) vibe(60);
       closeScanner();
       $('#pair-code').value = p.code; $('#pair-secret').value = p.secret;
       $('#pair-name').focus();
@@ -4706,7 +5395,7 @@
       else if (a === 'park') togglePark();
       else if (a === 'join-family') { const c = $('#join-code').value.trim(); if (c) joinFamily(c); }
       else if (a === 'close-search') closeSearch();
-      else if (a === 'confirm-lost') { if (navigator.vibrate) navigator.vibrate([80, 60, 80]); closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
+      else if (a === 'confirm-lost') { if (navigator.vibrate) vibe([80, 60, 80]); closeConfirm(); if (await setMode('lost')) toast(t('toast_lost_on')); }
       else if (a === 'cancel-lost') closeConfirm();
       else if (a === 'found') { if (await setMode('normal')) toast(t('toast_found')); }
       else if (a === 'share') shareLive(4);
@@ -4715,7 +5404,16 @@
       else if (a === 'close-report') closeReport();
       else if (a === 'print-report') window.print();
       else if (a === 'share-report') shareReport();
-      else if (a === 'theme') { const go = () => applyTheme(el.dataset.themePick); if (document.startViewTransition && !reduceMotion()) document.startViewTransition(go); else go(); }   // smooth crossfade
+      else if (a === 'theme') { if (!el.classList.contains('on')) revealChange(e, () => applyTheme(el.dataset.themePick)); }
+      else if (a === 'open-cal') openCal();
+      else if (a === 'close-cal') closeModal($('#cal-view'));
+      else if (a === 'cal-prev') calStep(-1);
+      else if (a === 'cal-next') calStep(1);
+      else if (a === 'share-day') shareDay();
+      else if (a === 'test-alert') sendTestAlert();
+      else if (a === 'toggle-vibe') toggleVibe();
+      else if (a === 'zone-suggest-add') suggestAnswer(true);
+      else if (a === 'zone-suggest-no') suggestAnswer(false);
       else if (a === 'replay-speed') setReplaySpeed(Number(el.dataset.speed));
       else if (a === 'backend') setBackend(!CFG.fakeBackend ? false : true);
       else if (a === 'add-zone') startZoneEdit();
@@ -4729,7 +5427,7 @@
       else if (a === 'toggle-cams') toggleCams();
       else if (a === 'toggle-cam-sound') toggleCamSound();
       else if (a === 'toggle-voice') toggleVoice();
-      else if (a === 'scheme') applyScheme(el.dataset.scheme);
+      else if (a === 'scheme') { if (el.dataset.scheme !== schemePref()) revealChange(e, () => applyScheme(el.dataset.scheme)); }
       else if (a === 'text-size') applySize(el.dataset.size);
       else if (a === 'open-alerts') openAlerts();
       else if (a === 'close-alerts') closeModal($('#alerts-view'));
@@ -4843,9 +5541,13 @@
     applyScheme(schemePref(), true);
     applySize(localStorage.getItem('trackly-size'), true);
     // a tiny tap feel on the main buttons (Android)
-    document.addEventListener('click', (e) => { if (!navigator.vibrate) return; if (e.target.closest('.switch')) navigator.vibrate(6); else if (e.target.closest('.tab, .fab, .ab, .quick-btn, .seg, .pchip')) navigator.vibrate(8); }, true);
+    document.addEventListener('click', (e) => { if (e.target.closest('.switch')) vibe(6); else if (e.target.closest('.tab, .fab, .ab, .quick-btn, .seg, .pchip')) vibe(8); }, true);
     setupSegPills();
     setupAccJump();
+    setupStickyTitles();
+    setupDaySwipe();
+    setupEsc();
+    renderVibe();
     takeLinkAction();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open

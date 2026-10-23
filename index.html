@@ -299,17 +299,25 @@
 
       <!-- History tab -->
       <div id="panel-history" class="panel r2-panel" hidden>
-        <div class="r2-head"><h2 class="r2-title" data-i18n="journey">Journey</h2><p id="hist-day" class="r2-sub">—</p></div>
+        <div class="r3-bar" aria-hidden="true"><strong data-i18n="journey">Journey</strong></div>
+        <div class="r2-head r3-head-row">
+          <div class="r3-titles"><h2 class="r2-title" data-i18n="journey">Journey</h2><p id="hist-day" class="r2-sub">—</p></div>
+          <div class="r3-head-btns">
+            <button id="hist-share" class="icon-btn r3-hbtn" type="button" data-action="share-day" data-i18n-aria="share_day" aria-label="Share my day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 14v6h14v-6"/></svg></button>
+            <button id="hist-cal" class="icon-btn r3-hbtn" type="button" data-action="open-cal" data-i18n-aria="calendar" aria-label="Calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg></button>
+          </div>
+        </div>
         <div id="history-days" class="chips r2-chips" hidden>
           <button type="button" class="chip active" data-day="0" data-i18n="today">Today</button>
           <button type="button" class="chip" data-day="1" data-i18n="yesterday">Yesterday</button>
           <label class="chip chip-date"><span data-i18n="pick_date">Pick date</span><input type="date" id="history-date"></label>
         </div>
         <div class="stats hist-stats">
-          <div class="stat"><span class="stat-label" data-i18n="hist_dist">Distance</span><span id="hist-km" class="stat-value">—</span></div>
+          <div class="stat"><span class="stat-label" data-i18n="hist_dist">Distance</span><span id="hist-km" class="stat-value">—</span><span id="hist-trend" class="stat-sub r3-trend" hidden></span></div>
           <div class="stat"><span class="stat-label" data-i18n="hist_stops">Stops</span><span id="hist-stops" class="stat-value">—</span></div>
           <div class="stat"><span class="stat-label" data-i18n="hist_moving">Moving</span><span id="hist-moving" class="stat-value">—</span></div>
         </div>
+        <div id="hist-highlights" class="r3-highlights" hidden></div>
         <div id="replay" class="replay r2-card" hidden>
           <button id="replay-play" class="replay-btn" type="button" data-action="replay" data-i18n-aria="replay" aria-label="Replay">
             <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
@@ -324,7 +332,8 @@
                 <button type="button" class="seg" data-action="replay-speed" data-speed="4">4×</button>
               </div>
             </div>
-            <input id="replay-range" class="r2-range" type="range" min="0" max="1" value="0" data-i18n-aria="replay" aria-label="Replay">
+            <div class="replay-track"><div id="replay-ticks" class="replay-ticks" aria-hidden="true"></div>
+            <input id="replay-range" class="r2-range" type="range" min="0" max="1" value="0" data-i18n-aria="replay" aria-label="Replay"></div>
           </div>
         </div>
         <ol id="timeline" class="timeline r2-timeline"></ol>
@@ -364,8 +373,15 @@
 
       <!-- Safe zones tab -->
       <div id="panel-zones" class="panel r2-panel" hidden>
+        <div class="r3-bar" aria-hidden="true"><strong data-i18n="safe_zones">Safe zones</strong></div>
         <div class="r2-head"><h2 class="r2-title" data-i18n="safe_zones">Safe zones</h2><p id="zones-health" class="bag-health" hidden><i aria-hidden="true"></i><span></span></p></div>
         <p class="muted small" data-i18n="zones_sub">Choose your own places. We’ll notify you when your bag leaves one of them.</p>
+        <div id="zone-suggest" class="r3-suggest" hidden>
+          <span id="zs-ic" class="zone-icon"></span>
+          <div class="acc-txt"><strong id="zs-title"></strong><span id="zs-text"></span>
+            <div class="r3-suggest-btns"><button class="btn btn-primary" type="button" data-action="zone-suggest-add" data-i18n="add">Add</button><button class="btn btn-secondary" type="button" data-action="zone-suggest-no" data-i18n="not_now">Not now</button></div>
+          </div>
+        </div>
         <ul id="zone-list" class="zone-list"></ul>
         <button id="zone-add" class="btn btn-primary btn-lg r2-add" type="button" data-action="add-zone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="add_zone">Add a safe zone</span></button>
         <section class="rem-section">
@@ -401,6 +417,7 @@
           <button type="button" class="seg" data-notify="arrive" data-i18n="arrives">Arrives</button>
           <button type="button" class="seg" data-notify="both" data-i18n="both">Both</button>
         </div>
+        <div id="zone-visits" class="r3-visits" hidden><span class="label" data-i18n="recent_visits">Recent visits</span><ul></ul></div>
         <p id="zone-error" class="form-error" role="alert"></p>
         <div class="actions editor-bar">
           <button class="btn btn-secondary" type="button" data-action="cancel-zone" data-i18n="cancel">Cancel</button>
@@ -411,6 +428,7 @@
 
       <!-- Account tab -->
       <div id="panel-account" class="panel r2-panel" hidden>
+        <div class="r3-bar" aria-hidden="true"><strong data-i18n="account">Account</strong></div>
         <div class="r2-head"><h2 class="r2-title" data-i18n="account">Account</h2></div>
         <div class="acc-profile">
           <span id="acc-avatar" class="acc-avatar" aria-hidden="true">?</span>
@@ -426,6 +444,11 @@
           </div>
         </section>
 
+        <section class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="battery_title">Battery</h3>
+          <div id="batt-cards" class="acc-card"></div>
+        </section>
+
         <section id="acc-alerts" class="acc-group">
           <h3 class="acc-gtitle" data-i18n="grp_notif">Notifications</h3>
           <div class="acc-card">
@@ -433,6 +456,10 @@
             <div class="acc-item"><span class="acc-ic" style="--c:#F97316"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l1 12H5L6 8zM9 8V6a3 3 0 0 1 6 0v2"/></svg></span><div class="acc-txt"><strong data-i18n="behind_title">Left-behind alert</strong><span data-i18n="behind_sub">Warns you when you walk away from your bag (while Trackly is open).</span></div><button id="behind-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="left-behind" data-i18n-aria="behind_title" aria-label="Left-behind alert"></button></div>
             <div class="acc-item"><span class="acc-ic" style="--c:#6366F1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><div class="acc-txt"><strong data-i18n="night_title">Night guard</strong><span data-i18n="night_sub">If your bag moves at night without you, Trackly asks “Is this you?” and starts lost mode after 2 minutes with no answer.</span></div><button id="night-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-night" data-i18n-aria="night_title" aria-label="Night guard"></button></div>
             <div class="acc-item"><span class="acc-ic" style="--c:#8B5CF6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></span><div class="acc-txt"><strong data-i18n="unusual_title">New-place alert</strong><span data-i18n="unusual_sub">Tells you when your bag stays somewhere it has never been before (Trackly learns your places over a few days).</span></div><button id="unusual-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-unusual" data-i18n-aria="unusual_title" aria-label="New-place alert"></button></div>
+          </div>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#14B8A6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0v4l2 3H4l2-3zM10 19a2 2 0 0 0 4 0"/></svg></span><div class="acc-txt"><strong data-i18n="vibration">Vibration</strong><span data-i18n="vibration_sub">Small buzzes for taps, alerts and directions</span></div><button id="vibe-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-vibe" data-i18n-aria="vibration" aria-label="Vibration"></button></div>
+            <button class="acc-item acc-link" type="button" data-action="test-alert"><span class="acc-ic" style="--c:#F59E0B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 16H3zM12 10v4M12 17h.01"/></svg></span><span class="acc-txt"><strong data-i18n="test_alert">Send a test alert</strong><span data-i18n="test_alert_sub">See how a Trackly alert looks on this phone</span></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
           <div class="acc-card">
             <div class="acc-subhead"><span data-i18n="alerts">Recent alerts</span><button class="link-btn" type="button" data-action="open-alerts" data-i18n="see_all">See all</button></div>
@@ -772,6 +799,21 @@
   </div>
 
   <button id="update-pill" class="update-pill" type="button" data-action="reload-app" hidden><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg><span data-i18n="update_ready">New version ready · Tap to update</span></button>
+
+  <!-- ============ MONTH VIEW (History) ============ -->
+  <div id="cal-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cal-title">
+    <div class="modal-card cal-card">
+      <div class="cal-head">
+        <button class="icon-btn" type="button" data-action="cal-prev" data-i18n-aria="prev_month" aria-label="Previous month"><svg class="flip-rtl" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <h2 id="cal-title">—</h2>
+        <button class="icon-btn" type="button" data-action="cal-next" data-i18n-aria="next_month" aria-label="Next month"><svg class="flip-rtl" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <div id="cal-week" class="cal-week" aria-hidden="true"></div>
+      <div id="cal-grid" class="cal-grid"></div>
+      <div class="cal-legend" aria-hidden="true"><span data-i18n="cal_less">Less</span><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span data-i18n="cal_more">More</span></div>
+      <button class="btn btn-secondary btn-lg" type="button" data-action="close-cal" data-i18n="close">Close</button>
+    </div>
+  </div>
 
   <!-- ============ ALERTS ============ -->
   <div id="alerts-view" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="alerts-title">
