@@ -316,10 +316,11 @@
             <div class="act-stats">
               <span id="act-title" class="label">Today</span>
               <div><strong id="act-km">—</strong><span data-i18n="act_km">walked</span></div>
-              <div><strong id="act-kcal">—</strong><span data-i18n="act_kcal">calories (kcal)</span></div>
+              <div><strong id="act-kcal">—</strong><span data-i18n="act_kcal">active kcal</span></div>
               <div><strong id="act-min">—</strong><span data-i18n="act_min">active</span></div>
             </div>
           </div>
+          <div id="act-hours" class="act-hours" hidden><div class="act-hhead"><span class="label" data-i18n="act_hours">When you walked</span><span class="act-hpeak muted tiny"></span></div><div class="act-hbars" aria-hidden="true"></div><div class="act-hscale" aria-hidden="true"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>
           <div id="act-week" class="act-week" aria-hidden="true"></div>
           <p id="act-src" class="muted tiny"></p>
           <button id="act-resume" class="btn btn-secondary" type="button" data-action="steps-resume" hidden data-i18n="act_resume">Tap to keep counting steps</button>
@@ -437,11 +438,12 @@
 
         <section id="acc-activity" class="acc-section">
           <div class="row-between">
-            <div><h3 data-i18n="steps_title">Count my steps</h3><p class="muted small" data-i18n="steps_sub">Uses this phone’s motion sensor while Trackly is open. Without it, steps are estimated from your bag’s walks.</p></div>
+            <div><h3 data-i18n="steps_title">Count my steps</h3><p class="muted small" data-i18n="steps_sub">Counts with this phone’s motion sensor while Trackly is open. When Trackly is closed, steps come from your bag’s walks. Add your height and weight for exact distance and calories.</p></div>
             <button id="steps-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-steps" data-i18n-aria="steps_title" aria-label="Count my steps"></button>
           </div>
           <div class="two-inputs">
             <label><span class="label" data-i18n="weight">Weight (kg)</span><input id="act-weight" type="number" inputmode="numeric" min="25" max="250" placeholder="70" dir="ltr"></label>
+            <label><span class="label" data-i18n="height">Height (cm)</span><input id="act-height" type="number" inputmode="numeric" min="100" max="230" placeholder="170" dir="ltr"></label>
             <label><span class="label" data-i18n="goal">Daily step goal</span><input id="act-goal" type="number" inputmode="numeric" min="1000" max="50000" step="500" placeholder="8000" dir="ltr"></label>
           </div>
         </section>

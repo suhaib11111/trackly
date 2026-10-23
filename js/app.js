@@ -174,7 +174,7 @@
   }
 
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
-    places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', goal: 'trackly-goal',
+    places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', height: 'trackly-height', goal: 'trackly-goal',
     finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
     car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
   function currentSettings() {
@@ -1638,8 +1638,8 @@
     if (cams.warned[key] && Date.now() - cams.warned[key] < 5 * 60e3) return;
     cams.warned[key] = Date.now();
     if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-    beep('cam');
-    say((lang) => best.c[2] ? tIn(lang, 'v_cam_limit', { d: spokenDist(best.d, lang), n: best.c[2] }) : tIn(lang, 'v_cam', { d: spokenDist(best.d, lang) }));
+    if (!voiceOn()) beep('cam');
+    say((lang) => best.c[2] ? tIn(lang, 'v_cam_limit', { n: best.c[2] }) : tIn(lang, 'v_cam'), null, false, 2);
     toast(best.c[2] ? t('cam_ahead_limit', { d: fmtDistance(best.d), n: best.c[2] }) : t('cam_ahead', { d: fmtDistance(best.d) }));
   }
 
@@ -1649,43 +1649,53 @@
   // without the phone, an estimate from the bag's walks (its walking-speed parts ÷ a 0.75 m step).
   // The day shows whichever is higher, so steps are never counted twice.
   // =====================================================================
-  const STEP_M = 0.75;
-  const act = { bag: {}, sensor: false, gotEvent: false, needTap: false, lastPeak: 0, run: 0, pending: 0, smooth: 9.8, above: false, today: null, saveTimer: null, drawTimer: null };
+  // step length from your height (about 41.5 % of it), 0.75 m if it isn't set
+  const heightCm = () => { const h = Number(localStorage.getItem('trackly-height')); return h >= 100 && h <= 230 ? h : 0; };
+  const stepLen = () => (heightCm() ? heightCm() * 0.415 / 100 : 0.75);
+  const act = { bag: {}, sensor: false, gotEvent: false, needTap: false, lastPeak: 0, run: 0, pending: 0, smooth: 9.8, mean: 9.8, dev: 0.8, above: false, today: null, saveTimer: null, drawTimer: null };
   const dayKey = (d) => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
   const weightKg = () => Math.min(250, Math.max(25, Number(localStorage.getItem('trackly-weight')) || 70));
   const stepGoal = () => Math.min(50000, Math.max(1000, Number(localStorage.getItem('trackly-goal')) || 8000));
   const stepsOn = () => localStorage.getItem('trackly-steps-on') === '1';
   const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
+  const zeros = () => new Array(24).fill(0);
+  // how hard walking is at a speed (MET): a stroll ~2.3, normal ~3.5, brisk ~5
+  const walkMet = (kmh) => (kmh < 3.2 ? 2.3 : kmh < 4.5 ? 3 : kmh < 5.5 ? 3.6 : kmh < 6.5 ? 4.3 : 5);
   function phoneSteps() { try { return JSON.parse(localStorage.getItem('trackly-steps')) || {}; } catch (e) { return {}; } }
   function savePhoneSteps() {
     const all = phoneSteps();
-    if (act.today) all[act.today.k] = { s: act.today.s, m: act.today.m };
+    if (act.today) all[act.today.k] = { s: act.today.s, m: act.today.m, h: act.today.h };
     const keys = Object.keys(all).sort();
     while (keys.length > 60) delete all[keys.shift()];
     try { localStorage.setItem('trackly-steps', JSON.stringify(all)); } catch (e) { /* storage full */ }
   }
   function addSteps(n) {
-    const k = dayKey(Date.now()), minute = Math.floor(Date.now() / 60000);
-    if (!act.today || act.today.k !== k) { const d = phoneSteps()[k] || { s: 0, m: 0 }; act.today = { k, s: d.s, m: d.m, lm: 0 }; }
+    const now = new Date(), k = dayKey(now), minute = Math.floor(now.getTime() / 60000);
+    if (!act.today || act.today.k !== k) { const d = phoneSteps()[k] || { s: 0, m: 0 }; act.today = { k, s: d.s, m: d.m, h: d.h || zeros(), lm: 0 }; }
     const before = act.today.s;
     act.today.s += n;
+    act.today.h[now.getHours()] += n;
     if (act.today.lm !== minute) { act.today.lm = minute; act.today.m++; }
     if (before < stepGoal() && act.today.s >= stepGoal()) { toast(t('goal_done')); if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]); }
     clearTimeout(act.saveTimer); act.saveTimer = setTimeout(savePhoneSteps, 3000);
     if (state.tab === 'history' && !act.drawTimer) act.drawTimer = setTimeout(() => { act.drawTimer = null; renderActivity(); }, 1000);
   }
-  // a step = a peak in the phone's movement; only runs of 6+ steps count (picking the phone up isn't walking)
+  // a step = a peak in the phone's movement. The level adapts to how the phone is carried (hand, pocket, bag),
+  // and only runs of 6+ steps count, so picking the phone up or a bumpy car isn't walking.
   function onMotion(e) {
     const a = e.accelerationIncludingGravity;
     if (!a || a.x == null) return;
     act.gotEvent = true;
     const mag = Math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
-    act.smooth = act.smooth * 0.75 + mag * 0.25;
-    if (act.above) { if (act.smooth < 10.3) act.above = false; return; }
-    if (act.smooth < 11.3) return;
+    act.smooth = act.smooth * 0.7 + mag * 0.3;
+    act.mean = act.mean * 0.98 + act.smooth * 0.02;
+    act.dev = act.dev * 0.98 + Math.abs(act.smooth - act.mean) * 0.02;
+    const hi = act.mean + Math.max(0.9, act.dev * 1.1), lo = act.mean + 0.25;
+    if (act.above) { if (act.smooth < lo) act.above = false; return; }
+    if (act.smooth < hi) return;
     act.above = true;
     const now = Date.now(), gap = now - act.lastPeak;
-    if (gap < 280) return;                       // too fast to be a step: shaking
+    if (gap < 300) return;                       // too fast to be a step: shaking
     act.lastPeak = now;
     if (gap > 2000) { act.run = 1; act.pending = 1; return; }
     act.run++; act.pending++;
@@ -1722,13 +1732,13 @@
   async function resumeSteps() { if (await startSteps(true)) { act.needTap = false; renderActivity(); } }
   function renderStepsSettings() {
     if ($('#steps-switch')) $('#steps-switch').setAttribute('aria-checked', String(stepsOn()));
-    const w = localStorage.getItem('trackly-weight'), g = localStorage.getItem('trackly-goal');
-    if ($('#act-weight') && document.activeElement !== $('#act-weight')) $('#act-weight').value = w || '';
-    if ($('#act-goal') && document.activeElement !== $('#act-goal')) $('#act-goal').value = g || '';
+    for (const [id, key] of [['#act-weight', 'trackly-weight'], ['#act-height', 'trackly-height'], ['#act-goal', 'trackly-goal']]) {
+      if ($(id) && document.activeElement !== $(id)) $(id).value = localStorage.getItem(key) || '';
+    }
   }
-  // the bag's walking parts (1.5–7 km/h) per day
+  // the bag's walking parts (1.5–7 km/h) per day and per hour, with the calories at that speed
   function bagActivity(pts) {
-    const out = {};
+    const out = {}, kg = weightKg();
     for (let i = 1; i < pts.length; i++) {
       const a = pts[i - 1], b = pts[i];
       const s = (new Date(b.created_at) - new Date(a.created_at)) / 1000;
@@ -1736,21 +1746,26 @@
       const d = distanceM(a, b), kmh = d / s * 3.6;
       if (d < 15 || kmh < 1.5 || kmh > 7) continue;
       const k = dayKey(b.created_at);
-      const o = out[k] || (out[k] = { walkM: 0, walkS: 0 });
+      const o = out[k] || (out[k] = { walkM: 0, walkS: 0, kcal: 0, h: zeros() });
       o.walkM += d; o.walkS += s;
+      o.kcal += (walkMet(kmh) - 1) * kg * s / 3600;             // active calories (above resting)
+      o.h[new Date(b.created_at).getHours()] += d;
     }
     return out;
   }
   function dayActivity(k) {
     const p = (act.today && act.today.k === k) ? act.today : phoneSteps()[k];
-    const b = act.bag[k];
-    const phone = p ? p.s : 0, bagSteps = b ? Math.round(b.walkM / STEP_M) : 0;
+    const b = act.bag[k], L = stepLen();
+    const phone = p ? p.s : 0, bagSteps = b ? Math.round(b.walkM / L) : 0;
     const usePhone = phone > 0 && phone >= bagSteps;
     const steps = Math.max(phone, bagSteps);
-    const km = usePhone ? phone * STEP_M / 1000 : (b ? b.walkM / 1000 : 0);
+    const km = usePhone ? phone * L / 1000 : (b ? b.walkM / 1000 : 0);
     const mins = usePhone ? p.m : (b ? Math.round(b.walkS / 60) : 0);
-    // walking burns about 0.5 kcal per kg of body weight per km
-    return { steps, km, mins, kcal: Math.round(km * weightKg() * 0.5), src: steps ? (usePhone ? 'phone' : 'bag') : '' };
+    let kcal = 0;
+    if (usePhone) { const hrs = Math.max(1, p.m) / 60; kcal = (walkMet(km / hrs) - 1) * weightKg() * hrs; }
+    else if (b) kcal = b.kcal != null ? b.kcal : km * weightKg() * 0.5;
+    const hours = usePhone ? (p.h || zeros()) : (b && b.h ? b.h.map((m) => m / L) : zeros());
+    return { steps, km, mins, kcal: Math.round(kcal), hours, src: steps ? (usePhone ? 'phone' : 'bag') : '' };
   }
   function renderActivity() {
     const card = $('#act-card');
@@ -1770,6 +1785,14 @@
     card.classList.toggle('done', d.steps >= goal);
     $('#act-src').textContent = d.src === 'phone' ? t('act_src_phone') : (d.src === 'bag' ? t('act_src_bag') : (stepsOn() ? t('act_src_wait') : t('act_src_none')));
     $('#act-resume').hidden = !(act.needTap && stepsOn() && isToday);
+    // when you walked: 24 small bars, one per hour
+    const hb = $('#act-hours'), maxH = Math.max(...d.hours);
+    hb.hidden = !d.steps;
+    if (d.steps) {
+      hb.querySelector('.act-hbars').innerHTML = d.hours.map((v, h) => '<i style="height:' + (v ? Math.max(8, v / maxH * 100) : 3) + '%"' + (v ? ' class="on"' : '') + ' title="' + String(h).padStart(2, '0') + ':00 · ' + fmtNum(v) + '"></i>').join('');
+      const peak = d.hours.indexOf(maxH);
+      hb.querySelector('.act-hpeak').textContent = t('act_peak', { t: String(peak).padStart(2, '0') + ':00' });
+    }
     // the last 7 days as bars, the dashed line is the goal
     const days = [];
     for (let i = 6; i >= 0; i--) { const x = new Date(); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() - i); days.push(x); }
@@ -1836,7 +1859,7 @@
   // DRIVING WITH THIS PHONE ("My location" on): speedometer, the limit of the camera ahead,
   // a warning when too fast, and a trip summary when the drive ends
   // =====================================================================
-  const drive = { trip: null, slowSince: 0, last: null, overBeep: 0, hideTimer: null };
+  const drive = { trip: null, slowSince: 0, last: null, overBeep: 0, overSaid: {}, hideTimer: null };
   function camAhead(p, heading) {
     const known = heading != null && !isNaN(heading);
     const range = known ? 800 : 300;
@@ -1883,7 +1906,8 @@
     el.classList.toggle('over', over);
     if (over) {
       if (drive.trip) drive.trip.over.add(ahead.key);
-      if (Date.now() - drive.overBeep > 8000) { drive.overBeep = Date.now(); beep('over'); say('v_slow', { n: ahead.limit }); if (navigator.vibrate) navigator.vibrate(250); }
+      const o = drive.overSaid[ahead.key] || (drive.overSaid[ahead.key] = { n: 0, at: 0 });
+      if (o.n < 2 && Date.now() - o.at > 20000) { o.n++; o.at = Date.now(); if (voiceOn()) say('v_slow', { n: ahead.limit }, false, 2); else beep('over'); if (navigator.vibrate) navigator.vibrate(200); }
     }
     drive.hideTimer = setTimeout(() => { el.hidden = true; }, 15000);   // no news from the GPS: hide it
   }
@@ -1924,16 +1948,16 @@
   const camSoundOn = () => localStorage.getItem('trackly-cam-sound') !== '0';
   function beep(kind) {
     if (!camSoundOn() || !audioCtx) return;
-    const tones = kind === 'over' ? [[880, 0], [880, 0.2], [880, 0.4]] : [[660, 0], [990, 0.2]];
+    const tones = kind === 'over' ? [[784, 0], [784, 0.22]] : [[659, 0], [988, 0.18]];
     const t0 = audioCtx.currentTime;
     for (const [f, at] of tones) {
       const o = audioCtx.createOscillator(), g = audioCtx.createGain();
       o.type = 'sine'; o.frequency.value = f;
       g.gain.setValueAtTime(0.0001, t0 + at);
-      g.gain.exponentialRampToValueAtTime(0.4, t0 + at + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.16);
+      g.gain.exponentialRampToValueAtTime(0.2, t0 + at + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.32);
       o.connect(g); g.connect(audioCtx.destination);
-      o.start(t0 + at); o.stop(t0 + at + 0.18);
+      o.start(t0 + at); o.stop(t0 + at + 0.34);
     }
   }
   function toggleCamSound() {
@@ -2096,9 +2120,19 @@
   const voiceOn = () => localStorage.getItem('trackly-voice') !== '0';
   let voiceReady = false;
   function tIn(lang, key, vars) { const cur = state.lang; state.lang = lang; try { return t(key, vars); } finally { state.lang = cur; } }
+  // the most natural voice the phone has: the new "Natural / Neural / Enhanced / Premium" ones first
+  function voiceScore(v) {
+    let n = 0;
+    if (/natural|neural|enhanced|premium|siri|wavenet/i.test(v.name)) n += 50;
+    if (/google/i.test(v.name)) n += 25;
+    if (/online/i.test(v.name)) n += 15;
+    if (/compact|espeak|robot/i.test(v.name)) n -= 40;
+    if (/^en-(GB|US)|^ar-(IQ|SA|AE|EG)/i.test(v.lang)) n += 5;
+    return n;
+  }
   function pickVoice() {
     const vs = window.speechSynthesis ? speechSynthesis.getVoices() : [];
-    const find = (re) => vs.find((v) => re.test(v.lang));
+    const find = (re) => vs.filter((v) => re.test(v.lang)).sort((a, b) => voiceScore(b) - voiceScore(a))[0];
     const order = state.lang === 'ckb' ? [['ckb', /^(ckb|ku)/i], ['ar', /^ar/i]] : state.lang === 'ar' ? [['ar', /^ar/i]] : [];
     for (const [lang, re] of order) { const v = find(re); if (v) return { v, lang }; }
     return { v: find(/^en/i) || null, lang: 'en' };
@@ -2108,14 +2142,23 @@
     return tIn(lang, 'v_m', { n: m >= 100 ? Math.round(m / 50) * 50 : Math.max(10, Math.round(m / 10) * 10) });
   }
   // say('v_key', vars) or say((lang) => text)
-  function say(what, vars, force) {
+  // pri: 1 info, 2 warning, 3 directions. Something less important never cuts off something more important.
+  let sayPri = 0;
+  function say(what, vars, force, pri) {
     if ((!voiceOn() && !force) || !window.speechSynthesis) return;
+    pri = pri || 1;
+    if (speechSynthesis.speaking && pri < sayPri) return;
     const { v, lang } = pickVoice();
     const u = new SpeechSynthesisUtterance(typeof what === 'function' ? what(lang) : tIn(lang, what, vars));
     if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = lang === 'en' ? 0.97 : 0.92;          // a little slower than the default: calmer, clearer
+    u.pitch = 1; u.volume = 1;
+    u.onend = u.onerror = () => { sayPri = 0; };
+    sayPri = pri;
     speechSynthesis.cancel();
     speechSynthesis.speak(u);
   }
+  if (window.speechSynthesis && speechSynthesis.addEventListener) speechSynthesis.addEventListener('voiceschanged', () => { /* pickVoice reads the new list */ });
   function unlockVoice() {           // iPhone: speech only works after it was started from a tap once
     if (voiceReady || !window.speechSynthesis) return;
     voiceReady = true;
@@ -2317,7 +2360,7 @@
     $('#nav-banner').hidden = false;
     drawRoutes(false);
     if (navigator.wakeLock && !rt.wake) navigator.wakeLock.request('screen').then((w) => { rt.wake = w; }).catch(() => {});
-    if (!quiet) say((lang) => tIn(lang, 'v_start', { d: spokenDist(r.m, lang), t: fmtSecs(r.s) }));
+    if (!quiet) say((lang) => tIn(lang, 'v_start', { d: spokenDist(r.m, lang) }), null, false, 3);
     updateNav();
   }
   function stopNav() {
@@ -2345,7 +2388,7 @@
     nav.idx = best;
     const prog = r.cum[best] + bu * ((r.cum[best + 1] || r.cum[best]) - r.cum[best]);
     const left = remainAll(prog);
-    if (left < 25) { say('nav_arrive'); toast(t('nav_arrive')); stopNav(); closeRoute(); return; }
+    if (left < 25) { say('nav_arrive', null, false, 3); toast(t('nav_arrive')); stopNav(); closeRoute(); return; }
     let k = r.stepAt.findIndex((a, i) => i > 0 && a > prog + 5);
     if (k < 0) k = r.steps.length - 1;
     const st = r.steps[k], toTurn = Math.max(0, r.stepAt[k] - prog);
@@ -2359,8 +2402,9 @@
     $('#rp-left').textContent = fmtSecs(secsLeft) + ' · ' + fmtDistance(left) + ' · ' + t('arrive_at', { t: clockTime(new Date(Date.now() + secsLeft * 1000).toISOString()) });
     // voice: once well before the turn, once right at it
     const far = rt.mode === 'car' ? 400 : 80, near = rt.mode === 'car' ? 70 : 20;
-    if (toTurn <= near && !nav.said[k + 'n']) { nav.said[k + 'n'] = nav.said[k + 'f'] = 1; say((lang) => navAct(st, lang)); }
-    else if (toTurn <= far && toTurn > near * 1.5 && !nav.said[k + 'f']) { nav.said[k + 'f'] = 1; say((lang) => tIn(lang, 'v_in', { d: spokenDist(toTurn, lang), a: navAct(st, lang) })); }
+    const talk = st.type === 'arrive' || /roundabout|rotary|fork|ramp|merge/.test(st.type) || (st.mod && st.mod !== 'straight' && st.type !== 'new name');
+    if (talk && toTurn <= near && !nav.said[k + 'n']) { nav.said[k + 'n'] = nav.said[k + 'f'] = 1; say((lang) => navAct(st, lang), null, false, 3); }
+    else if (talk && toTurn <= far && toTurn > near * 1.5 && !nav.said[k + 'f']) { nav.said[k + 'f'] = 1; say((lang) => tIn(lang, 'v_in', { d: spokenDist(toTurn, lang), a: navAct(st, lang) }), null, false, 3); }
     // keep me in the free part of the map, above the card
     const z = Math.max(map.m.getZoom(), rt.mode === 'car' ? 16 : 17);
     const pt = map.m.project([me.lat, me.lng], z).add([0, Math.min(coverH() / 2 - 60, 220)]);
@@ -2370,7 +2414,7 @@
     const nav = rt.nav;
     if (!nav || nav.busy || Date.now() - (nav.rerouteAt || 0) < 15000 || !state.me) return;
     nav.busy = true; nav.rerouteAt = Date.now();
-    say('v_reroute');
+    say('v_reroute', null, false, 3);
     const routes = await getRoutes(state.me, rt.to, rt.mode, true);
     if (!rt.nav) return;
     nav.busy = false;
@@ -4612,7 +4656,7 @@
     $('#rem-form').addEventListener('submit', submitReminder);
     renderVoice(); renderSmartSwitches();
     const num = (id, key) => $(id).addEventListener('change', (e) => { const v = e.target.value.trim(); if (v) localStorage.setItem(key, String(Math.round(Number(v)))); else localStorage.removeItem(key); syncSettings(); renderStepsSettings(); renderActivity(); });
-    num('#act-weight', 'trackly-weight'); num('#act-goal', 'trackly-goal');
+    num('#act-weight', 'trackly-weight'); num('#act-height', 'trackly-height'); num('#act-goal', 'trackly-goal');
     ['#finder-phone', '#finder-msg'].forEach((id) => $(id).addEventListener('change', saveFinder));
     renderStepsSettings(); renderCamSound(); renderFinder();
     if (stepsOn()) startSteps(false);

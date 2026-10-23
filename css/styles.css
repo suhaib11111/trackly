@@ -1295,3 +1295,14 @@ html[data-size="xl"] .alert-item span { font-size: 15px; }
 .bag-info .near { padding-inline-start: 26px; }
 .ab { width: auto; min-width: 64px; padding: 0 2px; }
 .act-row { gap: 14px; }
+
+/* steps by hour */
+.act-hours { display: flex; flex-direction: column; gap: 6px; }
+.act-hhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.act-hhead .label { margin: 0; }
+.act-hbars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 44px; align-items: end; }
+.act-hbars i { display: block; border-radius: 3px; background: var(--line); }
+.act-hbars i.on { background: var(--accent); }
+.act-hscale { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-2); direction: ltr; }
+html[dir="rtl"] .act-hbars { direction: ltr; }
+.two-inputs { grid-template-columns: repeat(3, 1fr); }
