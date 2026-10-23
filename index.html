@@ -161,13 +161,6 @@
     <div id="places-bar" class="places-bar" hidden></div>
     <div id="places-hint" class="places-hint" hidden data-i18n="places_zoom">Zoom in to see places</div>
 
-    <!-- history day picker -->
-    <div id="history-days" class="chips" hidden>
-      <button type="button" class="chip active" data-day="0" data-i18n="today">Today</button>
-      <button type="button" class="chip" data-day="1" data-i18n="yesterday">Yesterday</button>
-      <label class="chip chip-date"><span data-i18n="pick_date">Pick date</span><input type="date" id="history-date"></label>
-    </div>
-
     <!-- zone editor helpers -->
     <div id="zone-hint" class="hint" hidden data-i18n="zone_hint">Move the map to place the pin</div>
     <div id="zone-pin" class="center-pin" hidden aria-hidden="true"></div>
@@ -305,8 +298,37 @@
       </div>
 
       <!-- History tab -->
-      <div id="panel-history" class="panel" hidden>
-        <h2 data-i18n="journey">Journey</h2>
+      <div id="panel-history" class="panel r2-panel" hidden>
+        <div class="r2-head"><h2 class="r2-title" data-i18n="journey">Journey</h2><p id="hist-day" class="r2-sub">—</p></div>
+        <div id="history-days" class="chips r2-chips" hidden>
+          <button type="button" class="chip active" data-day="0" data-i18n="today">Today</button>
+          <button type="button" class="chip" data-day="1" data-i18n="yesterday">Yesterday</button>
+          <label class="chip chip-date"><span data-i18n="pick_date">Pick date</span><input type="date" id="history-date"></label>
+        </div>
+        <div class="stats hist-stats">
+          <div class="stat"><span class="stat-label" data-i18n="hist_dist">Distance</span><span id="hist-km" class="stat-value">—</span></div>
+          <div class="stat"><span class="stat-label" data-i18n="hist_stops">Stops</span><span id="hist-stops" class="stat-value">—</span></div>
+          <div class="stat"><span class="stat-label" data-i18n="hist_moving">Moving</span><span id="hist-moving" class="stat-value">—</span></div>
+        </div>
+        <div id="replay" class="replay r2-card" hidden>
+          <button id="replay-play" class="replay-btn" type="button" data-action="replay" data-i18n-aria="replay" aria-label="Replay">
+            <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
+            <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+          </button>
+          <div class="replay-main">
+            <div class="replay-info">
+              <span id="replay-time" class="replay-time"><strong id="replay-clock">--:--</strong><span id="replay-batt" class="replay-batt"></span></span>
+              <div id="replay-speed" class="segmented small replay-speed" dir="ltr" role="group" data-i18n-aria="replay_speed" aria-label="Replay speed">
+                <button type="button" class="seg active" data-action="replay-speed" data-speed="1">1×</button>
+                <button type="button" class="seg" data-action="replay-speed" data-speed="2">2×</button>
+                <button type="button" class="seg" data-action="replay-speed" data-speed="4">4×</button>
+              </div>
+            </div>
+            <input id="replay-range" class="r2-range" type="range" min="0" max="1" value="0" data-i18n-aria="replay" aria-label="Replay">
+          </div>
+        </div>
+        <ol id="timeline" class="timeline r2-timeline"></ol>
+        <p id="history-summary" class="muted tiny center"></p>
         <div id="act-card" class="act-card">
           <div class="act-top">
             <div class="act-ring">
@@ -338,34 +360,24 @@
           <span class="label" data-i18n="week_top">Most time spent at</span>
           <ol id="week-top" class="week-top"></ol>
         </div>
-        <p id="history-summary" class="muted small"></p>
-        <div id="replay" class="replay" hidden>
-          <button id="replay-play" class="icon-btn" type="button" data-action="replay" data-i18n-aria="replay" aria-label="Replay">
-            <svg class="i-play flip-rtl" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg>
-            <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
-          </button>
-          <input id="replay-range" type="range" min="0" max="1" value="0" data-i18n-aria="replay" aria-label="Replay">
-          <span id="replay-time" class="replay-time"></span>
-        </div>
-        <ol id="timeline" class="timeline"></ol>
       </div>
 
       <!-- Safe zones tab -->
-      <div id="panel-zones" class="panel" hidden>
-        <h2 data-i18n="safe_zones">Safe zones</h2>
+      <div id="panel-zones" class="panel r2-panel" hidden>
+        <div class="r2-head"><h2 class="r2-title" data-i18n="safe_zones">Safe zones</h2><p id="zones-health" class="bag-health" hidden><i aria-hidden="true"></i><span></span></p></div>
         <p class="muted small" data-i18n="zones_sub">Choose your own places. We’ll notify you when your bag leaves one of them.</p>
         <ul id="zone-list" class="zone-list"></ul>
-        <button class="btn btn-dashed" type="button" data-action="add-zone" data-i18n="add_zone">Add a safe zone</button>
+        <button id="zone-add" class="btn btn-primary btn-lg r2-add" type="button" data-action="add-zone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="add_zone">Add a safe zone</span></button>
         <section class="rem-section">
           <h3 data-i18n="rem_title">Reminders</h3>
           <p class="muted small" data-i18n="rem_sub">“When I leave Home: take the charger.” Works with your bag and with this phone.</p>
           <ul id="rem-list" class="rem-list"></ul>
-          <button class="btn btn-secondary" type="button" data-action="add-reminder" data-i18n="rem_add">Add a reminder</button>
+          <button class="btn btn-secondary r2-add" type="button" data-action="add-reminder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="rem_add">Add a reminder</span></button>
         </section>
       </div>
 
       <!-- Zone editor -->
-      <form id="panel-zone-edit" class="panel form" hidden novalidate>
+      <form id="panel-zone-edit" class="panel form r2-editor" hidden novalidate>
         <h2 id="zone-edit-title">New safe zone</h2>
         <span class="label" data-i18n="zone_type">Type</span>
         <div id="zone-kinds" class="kinds">
@@ -382,7 +394,7 @@
           <label for="zone-radius" data-i18n="zone_size">Zone size</label>
           <strong id="zone-radius-value">200 m</strong>
         </div>
-        <input id="zone-radius" type="range" min="50" max="1000" step="10" value="200">
+        <input id="zone-radius" class="r2-range" type="range" min="50" max="1000" step="10" value="200">
         <span class="label" data-i18n="notify_when">Notify me when the bag</span>
         <div class="segmented small" id="zone-notify">
           <button type="button" class="seg active" data-notify="leave" data-i18n="leaves">Leaves</button>
@@ -394,140 +406,136 @@
           <button class="btn btn-secondary" type="button" data-action="cancel-zone" data-i18n="cancel">Cancel</button>
           <button id="zone-save" class="btn btn-primary" type="submit">Save safe zone</button>
         </div>
-        <button id="zone-delete" class="btn btn-ghost danger-text" type="button" data-action="delete-zone" data-i18n="delete_zone">Delete this zone</button>
+        <button id="zone-delete" class="btn btn-danger-soft" type="button" data-action="delete-zone"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span data-i18n="delete_zone">Delete this zone</span></button>
       </form>
 
       <!-- Account tab -->
-      <div id="panel-account" class="panel" hidden>
-        <h2 data-i18n="account">Account</h2>
-        <p id="account-email" class="muted small"></p>
-        <div class="acc-jump" role="navigation"><button type="button" class="chip" data-action="acc-jump" data-target="acc-bags" data-i18n="jump_bags">Bags</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-alerts" data-i18n="jump_alerts">Alerts</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-activity" data-i18n="jump_activity">Activity</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-finder" data-i18n="jump_finder">Finder tag</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-look" data-i18n="jump_look">Look</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-security" data-i18n="jump_security">Security</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-family" data-i18n="jump_family">Family</button></div>
+      <div id="panel-account" class="panel r2-panel" hidden>
+        <div class="r2-head"><h2 class="r2-title" data-i18n="account">Account</h2></div>
+        <div class="acc-profile">
+          <span id="acc-avatar" class="acc-avatar" aria-hidden="true">?</span>
+          <div class="acc-txt"><strong id="account-email"></strong><span id="acc-bagcount"></span></div>
+        </div>
+        <div class="acc-jump" role="navigation"><button type="button" class="chip" data-action="acc-jump" data-target="acc-bags" data-i18n="jump_bags">Bags</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-alerts" data-i18n="jump_alerts">Alerts</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-activity" data-i18n="jump_activity">Activity</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-finder" data-i18n="jump_finder">Finder tag</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-look" data-i18n="jump_look">Look</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-security" data-i18n="jump_security">Security</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-family" data-i18n="jump_family">Family</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-app" data-i18n="jump_app">App</button></div>
 
-        <section id="acc-bags" class="acc-section">
-          <h3 data-i18n="your_bags">Your bags</h3>
-          <ul id="bag-list" class="bag-list"></ul>
-        </section>
-
-        <section class="acc-section">
-          <button class="acc-row" type="button" data-action="lang">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg><span data-i18n="language">Language</span><strong id="acc-lang">English</strong>
-          </button>
-          <button id="install-btn" class="acc-row" type="button" data-action="install" hidden>
-            <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span data-i18n="install_app">Install Trackly on this phone</span>
-          </button>
-        </section>
-
-        <section id="acc-alerts" class="acc-section">
-          <div class="row-between">
-            <div><h3 data-i18n="push_title">Phone notifications</h3><p id="push-state" class="muted small"></p></div>
-            <button id="push-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="push" data-i18n-aria="push_title" aria-label="Phone notifications"></button>
-          </div>
-          <div class="row-between">
-            <div><h3 data-i18n="behind_title">Left-behind alert</h3><p class="muted small" data-i18n="behind_sub">Warns you when you walk away from your bag (while Trackly is open).</p></div>
-            <button id="behind-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="left-behind" data-i18n-aria="behind_title" aria-label="Left-behind alert"></button>
-          </div>
-          <div class="row-between">
-            <div><h3 data-i18n="night_title">Night guard</h3><p class="muted small" data-i18n="night_sub">If your bag moves at night without you, Trackly asks “Is this you?” and starts lost mode after 2 minutes with no answer.</p></div>
-            <button id="night-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-night" data-i18n-aria="night_title" aria-label="Night guard"></button>
-          </div>
-          <div class="row-between">
-            <div><h3 data-i18n="unusual_title">New-place alert</h3><p class="muted small" data-i18n="unusual_sub">Tells you when your bag stays somewhere it has never been before (Trackly learns your places over a few days).</p></div>
-            <button id="unusual-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-unusual" data-i18n-aria="unusual_title" aria-label="New-place alert"></button>
+        <section id="acc-bags" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="your_bags">Your bags</h3>
+          <div class="acc-card">
+            <ul id="bag-list" class="bag-list"></ul>
+            <button class="acc-item acc-link" type="button" data-action="add-tracker"><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="acc-txt"><strong data-i18n="add_tracker">Pair another tracker</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
         </section>
 
-        <section id="acc-activity" class="acc-section">
-          <div class="row-between">
-            <div><h3 data-i18n="steps_title">Count my steps</h3><p class="muted small" data-i18n="steps_sub">Counts with this phone’s motion sensor while Trackly is open. When Trackly is closed, steps come from your bag’s walks. Add your height and weight for exact distance and calories.</p></div>
-            <button id="steps-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-steps" data-i18n-aria="steps_title" aria-label="Count my steps"></button>
+        <section id="acc-alerts" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="grp_notif">Notifications</h3>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#EF4444"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg></span><div class="acc-txt"><strong data-i18n="push_title">Phone notifications</strong><span id="push-state"></span></div><button id="push-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="push" data-i18n-aria="push_title" aria-label="Phone notifications"></button></div>
+            <div class="acc-item"><span class="acc-ic" style="--c:#F97316"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8h12l1 12H5L6 8zM9 8V6a3 3 0 0 1 6 0v2"/></svg></span><div class="acc-txt"><strong data-i18n="behind_title">Left-behind alert</strong><span data-i18n="behind_sub">Warns you when you walk away from your bag (while Trackly is open).</span></div><button id="behind-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="left-behind" data-i18n-aria="behind_title" aria-label="Left-behind alert"></button></div>
+            <div class="acc-item"><span class="acc-ic" style="--c:#6366F1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></span><div class="acc-txt"><strong data-i18n="night_title">Night guard</strong><span data-i18n="night_sub">If your bag moves at night without you, Trackly asks “Is this you?” and starts lost mode after 2 minutes with no answer.</span></div><button id="night-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-night" data-i18n-aria="night_title" aria-label="Night guard"></button></div>
+            <div class="acc-item"><span class="acc-ic" style="--c:#8B5CF6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z"/></svg></span><div class="acc-txt"><strong data-i18n="unusual_title">New-place alert</strong><span data-i18n="unusual_sub">Tells you when your bag stays somewhere it has never been before (Trackly learns your places over a few days).</span></div><button id="unusual-switch" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-unusual" data-i18n-aria="unusual_title" aria-label="New-place alert"></button></div>
           </div>
-          <div class="two-inputs">
-            <label><span class="label" data-i18n="weight">Weight (kg)</span><input id="act-weight" type="number" inputmode="numeric" min="25" max="250" placeholder="70" dir="ltr"></label>
-            <label><span class="label" data-i18n="height">Height (cm)</span><input id="act-height" type="number" inputmode="numeric" min="100" max="230" placeholder="170" dir="ltr"></label>
-            <label><span class="label" data-i18n="goal">Daily step goal</span><input id="act-goal" type="number" inputmode="numeric" min="1000" max="50000" step="500" placeholder="8000" dir="ltr"></label>
-          </div>
-        </section>
-
-        <section id="acc-finder" class="acc-section">
-          <h3 data-i18n="finder_title">If someone finds my bag</h3>
-          <p class="muted small" data-i18n="finder_sub">A page with your phone number. Print its QR code and put it inside the bag.</p>
-          <label class="label" for="finder-phone" data-i18n="finder_phone">Your phone number (WhatsApp)</label>
-          <input id="finder-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0750 123 4567" dir="ltr">
-          <label class="label" for="finder-msg" data-i18n="finder_msg">Message for the finder</label>
-          <input id="finder-msg" maxlength="140" data-i18n-ph="finder_msg_ph" placeholder="Thank you! Please call me, there is a reward.">
-          <div class="actions">
-            <button class="btn btn-secondary" type="button" data-action="finder-share" data-i18n="finder_share">Share link</button>
-            <button class="btn btn-primary" type="button" data-action="finder-qr" data-i18n="finder_qr">Show QR</button>
+          <div class="acc-card">
+            <div class="acc-subhead"><span data-i18n="alerts">Recent alerts</span><button class="link-btn" type="button" data-action="open-alerts" data-i18n="see_all">See all</button></div>
+            <ul id="alert-list" class="alert-list"></ul>
           </div>
         </section>
 
-        <section id="acc-security" class="acc-section">
-          <div class="row-between">
-            <div><h3 data-i18n="mfa_title">Two-step login</h3><p id="mfa-state" class="muted small"></p></div>
-            <button id="mfa-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="mfa" data-i18n-aria="mfa_title" aria-label="Two-step login"></button>
+        <section id="acc-activity" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="grp_activity">Activity</h3>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#22C55E"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4a2 2 0 1 0 0 .01M9 21l2-6 3 2v4M7 12l3-4 4 1 3 3"/></svg></span><div class="acc-txt"><strong data-i18n="steps_title">Count my steps</strong><span data-i18n="steps_sub">Counts with this phone’s motion sensor while Trackly is open. When Trackly is closed, steps come from your bag’s walks. Add your height and weight for exact distance and calories.</span></div><button id="steps-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-steps" data-i18n-aria="steps_title" aria-label="Count my steps"></button></div>
+            <div class="acc-item acc-inputs"><div class="two-inputs">
+              <label><span class="label" data-i18n="weight">Weight (kg)</span><input id="act-weight" type="number" inputmode="numeric" min="25" max="250" placeholder="70" dir="ltr"></label>
+              <label><span class="label" data-i18n="height">Height (cm)</span><input id="act-height" type="number" inputmode="numeric" min="100" max="230" placeholder="170" dir="ltr"></label>
+              <label><span class="label" data-i18n="goal">Daily step goal</span><input id="act-goal" type="number" inputmode="numeric" min="1000" max="50000" step="500" placeholder="8000" dir="ltr"></label>
+            </div></div>
           </div>
         </section>
 
-        <section id="acc-family" class="acc-section">
-          <h3 data-i18n="join_title">Join a family bag</h3>
-          <p class="muted small" data-i18n="join_sub">Got an invite code from family? Enter it to see their bag.</p>
-          <div class="join-row">
-            <input id="join-code" autocapitalize="characters" autocomplete="off" maxlength="12" placeholder="A1B2C3D4" dir="ltr">
-            <button class="btn btn-primary" type="button" data-action="join-family" data-i18n="join_btn">Join</button>
+        <section id="acc-finder" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="jump_finder">Finder tag</h3>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#14B8A6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12V4h8l10 10-8 8zM7.5 7.5h.01"/></svg></span><div class="acc-txt"><strong data-i18n="finder_title">If someone finds my bag</strong><span data-i18n="finder_sub">A page with your phone number. Print its QR code and put it inside the bag.</span></div></div>
+            <div class="acc-item acc-inputs">
+              <label class="label" for="finder-phone" data-i18n="finder_phone">Your phone number (WhatsApp)</label>
+              <input id="finder-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0750 123 4567" dir="ltr">
+              <label class="label" for="finder-msg" data-i18n="finder_msg">Message for the finder</label>
+              <input id="finder-msg" maxlength="140" data-i18n-ph="finder_msg_ph" placeholder="Thank you! Please call me, there is a reward.">
+              <div class="actions">
+                <button class="btn btn-secondary" type="button" data-action="finder-share" data-i18n="finder_share">Share link</button>
+                <button class="btn btn-primary" type="button" data-action="finder-qr" data-i18n="finder_qr">Show QR</button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section id="acc-look" class="acc-section">
-          <h3 data-i18n="appearance">Appearance</h3>
-          <div id="scheme-seg" class="segmented small">
-            <button type="button" class="seg" data-action="scheme" data-scheme="auto" data-i18n="scheme_auto">Auto</button>
-            <button type="button" class="seg" data-action="scheme" data-scheme="light" data-i18n="scheme_light">Light</button>
-            <button type="button" class="seg" data-action="scheme" data-scheme="dark" data-i18n="scheme_dark">Dark</button>
-          </div>
-          <h3 data-i18n="text_size">Text size</h3>
-          <div id="size-seg" class="segmented small">
-            <button type="button" class="seg" data-action="text-size" data-size="normal" data-i18n="size_normal">Normal</button>
-            <button type="button" class="seg" data-action="text-size" data-size="large" data-i18n="size_large">Large</button>
-            <button type="button" class="seg" data-action="text-size" data-size="xl" data-i18n="size_xl">Extra large</button>
-          </div>
-          <h3 data-i18n="theme">Colour theme</h3>
-          <div id="theme-list" class="theme-list">
-            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="gold"><span class="tsw tsw-gold"></span><span data-i18n="theme_gold">Gold</span></button>
-            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="mint"><span class="tsw tsw-mint"></span><span data-i18n="theme_mint">Mint</span></button>
-            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="rose"><span class="tsw tsw-rose"></span><span data-i18n="theme_rose">Rose</span></button>
-            <button type="button" class="theme-opt" data-action="theme" data-theme-pick="ocean"><span class="tsw tsw-ocean"></span><span data-i18n="theme_ocean">Ocean</span></button>
-          </div>
-        </section>
-
-        <section class="acc-section">
-          <h3 data-i18n="share_family">Share with family</h3>
-          <p class="muted small" data-i18n="share_family_sub">A link that shows your bag live, then stops working by itself.</p>
-          <div class="segmented small">
-            <button type="button" class="seg" data-action="share-live" data-hours="1" data-i18n="h1">1 hour</button>
-            <button type="button" class="seg" data-action="share-live" data-hours="4" data-i18n="h4">4 hours</button>
-            <button type="button" class="seg" data-action="share-live" data-hours="24" data-i18n="h24">1 day</button>
+        <section id="acc-look" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="appearance">Appearance</h3>
+          <div class="acc-card">
+            <div class="acc-item acc-stack"><span class="acc-ic" style="--c:#F59E0B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><div class="acc-txt"><strong data-i18n="appearance">Appearance</strong>
+              <div id="scheme-seg" class="segmented small">
+                <button type="button" class="seg" data-action="scheme" data-scheme="auto" data-i18n="scheme_auto">Auto</button>
+                <button type="button" class="seg" data-action="scheme" data-scheme="light" data-i18n="scheme_light">Light</button>
+                <button type="button" class="seg" data-action="scheme" data-scheme="dark" data-i18n="scheme_dark">Dark</button>
+              </div></div></div>
+            <div class="acc-item acc-stack"><span class="acc-ic" style="--c:#64748B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg></span><div class="acc-txt"><strong data-i18n="text_size">Text size</strong>
+              <div id="size-seg" class="segmented small">
+                <button type="button" class="seg" data-action="text-size" data-size="normal" data-i18n="size_normal">Normal</button>
+                <button type="button" class="seg" data-action="text-size" data-size="large" data-i18n="size_large">Large</button>
+                <button type="button" class="seg" data-action="text-size" data-size="xl" data-i18n="size_xl">Extra large</button>
+              </div></div></div>
+            <div class="acc-item acc-stack"><span class="acc-ic" style="--c:#EC4899"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8zM7.5 11h.01M10 7h.01M14.5 7h.01"/></svg></span><div class="acc-txt"><strong data-i18n="theme">Colour theme</strong>
+              <div id="theme-list" class="theme-list">
+                <button type="button" class="theme-opt" data-action="theme" data-theme-pick="gold"><span class="tsw tsw-gold"></span><span data-i18n="theme_gold">Gold</span></button>
+                <button type="button" class="theme-opt" data-action="theme" data-theme-pick="mint"><span class="tsw tsw-mint"></span><span data-i18n="theme_mint">Mint</span></button>
+                <button type="button" class="theme-opt" data-action="theme" data-theme-pick="rose"><span class="tsw tsw-rose"></span><span data-i18n="theme_rose">Rose</span></button>
+                <button type="button" class="theme-opt" data-action="theme" data-theme-pick="ocean"><span class="tsw tsw-ocean"></span><span data-i18n="theme_ocean">Ocean</span></button>
+              </div></div></div>
+            <button class="acc-item acc-link" type="button" data-action="lang"><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg></span><span class="acc-txt"><strong data-i18n="language">Language</strong></span><strong id="acc-lang" class="acc-val">English</strong><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
         </section>
 
-        <section class="acc-section">
-          <h3 data-i18n="alerts">Recent alerts</h3>
-          <ul id="alert-list" class="alert-list"></ul>
-        </section>
-
-        <section class="acc-section">
-          <div class="row-between">
-            <div><h3 data-i18n="backend">Real database</h3><p id="backend-state" class="muted small"></p></div>
-            <button id="backend-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="backend" data-i18n-aria="backend" aria-label="Real database"></button>
+        <section id="acc-security" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="grp_security">Security</h3>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#64748B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4"/></svg></span><div class="acc-txt"><strong data-i18n="mfa_title">Two-step login</strong><span id="mfa-state"></span></div><button id="mfa-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="mfa" data-i18n-aria="mfa_title" aria-label="Two-step login"></button></div>
           </div>
         </section>
-        <a class="btn btn-secondary" href="landing.html" data-i18n="landing_link">Trackly website &amp; pre-order</a>
-        <a id="admin-link" class="btn btn-secondary" href="admin.html" hidden data-i18n="owner_page">Owner page</a>
-        <a class="btn btn-ghost" href="privacy.html" data-i18n="terms_link">Terms &amp; privacy</a>
-        <button class="btn btn-ghost danger-text" type="button" data-action="delete-account" data-i18n="delete_acc">Delete my account</button>
-        <p class="muted tiny center version"><span data-i18n="version">Version</span> <span id="app-version" dir="ltr"></span> · <button class="link-btn tiny-link" type="button" data-action="check-update" data-i18n="check_update">Check for update</button></p>
-        <button class="btn btn-secondary" type="button" data-action="add-tracker" data-i18n="add_tracker">Pair another tracker</button>
-        <button class="btn btn-secondary" type="button" data-action="show-setup" data-i18n="install_help">Add to home screen</button>
-        <button class="btn btn-ghost" type="button" data-action="logout" data-i18n="logout">Log out</button>
+
+        <section id="acc-family" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="grp_family">Family</h3>
+          <div class="acc-card">
+            <div class="acc-item"><span class="acc-ic" style="--c:#22C55E"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM3 20a6 6 0 0 1 12 0M16 5a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4-5.6"/></svg></span><div class="acc-txt"><strong data-i18n="join_title">Join a family bag</strong><span data-i18n="join_sub">Got an invite code from family? Enter it to see their bag.</span></div></div>
+            <div class="acc-item acc-inputs"><div class="join-row">
+              <input id="join-code" autocapitalize="characters" autocomplete="off" maxlength="12" placeholder="A1B2C3D4" dir="ltr">
+              <button class="btn btn-primary" type="button" data-action="join-family" data-i18n="join_btn">Join</button>
+            </div></div>
+            <div class="acc-item"><span class="acc-ic" style="--c:#F97316"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></span><div class="acc-txt"><strong data-i18n="share_family">Share with family</strong><span data-i18n="share_family_sub">A link that shows your bag live, then stops working by itself.</span></div></div>
+            <div class="acc-item acc-inputs"><div class="segmented small">
+              <button type="button" class="seg" data-action="share-live" data-hours="1" data-i18n="h1">1 hour</button>
+              <button type="button" class="seg" data-action="share-live" data-hours="4" data-i18n="h4">4 hours</button>
+              <button type="button" class="seg" data-action="share-live" data-hours="24" data-i18n="h24">1 day</button>
+            </div></div>
+          </div>
+        </section>
+
+        <section id="acc-app" class="acc-group">
+          <h3 class="acc-gtitle" data-i18n="grp_app">App</h3>
+          <div class="acc-card">
+            <button id="install-btn" class="acc-item acc-link" type="button" data-action="install" hidden><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></span><span class="acc-txt"><strong data-i18n="install_app">Install Trackly on this phone</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <button class="acc-item acc-link" type="button" data-action="show-setup"><span class="acc-ic" style="--c:#14B8A6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM12 9v6M9 12h6"/></svg></span><span class="acc-txt"><strong data-i18n="install_help">Add to home screen</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <div class="acc-item"><span class="acc-ic" style="--c:#64748B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg></span><div class="acc-txt"><strong data-i18n="backend">Real database</strong><span id="backend-state"></span></div><button id="backend-switch" class="switch" type="button" role="switch" aria-checked="false" data-action="backend" data-i18n-aria="backend" aria-label="Real database"></button></div>
+            <a class="acc-item acc-link" href="landing.html"><span class="acc-ic" style="--c:#8B5CF6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h18v14H3zM3 9h18"/></svg></span><span class="acc-txt"><strong data-i18n="landing_link">Trackly website &amp; pre-order</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+            <a id="admin-link" class="acc-item acc-link" href="admin.html" hidden><span class="acc-ic" style="--c:#F59E0B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span><span class="acc-txt"><strong data-i18n="owner_page">Owner page</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+            <a class="acc-item acc-link" href="privacy.html"><span class="acc-ic" style="--c:#64748B"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/></svg></span><span class="acc-txt"><strong data-i18n="terms_link">Terms &amp; privacy</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>
+            <button class="acc-item acc-link" type="button" data-action="check-update"><span class="acc-ic" style="--c:#22C55E"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg></span><span class="acc-txt"><strong data-i18n="check_update">Check for update</strong><span><span data-i18n="version">Version</span> <span id="app-version" dir="ltr"></span></span></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          </div>
+        </section>
+
+        <div class="acc-bottom">
+          <button class="btn btn-secondary btn-lg" type="button" data-action="logout"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/></svg><span data-i18n="logout">Log out</span></button>
+          <button class="btn btn-danger-soft btn-lg" type="button" data-action="delete-account"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg><span data-i18n="delete_acc">Delete my account</span></button>
+        </div>
       </div>
 
     </div>

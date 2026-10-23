@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    hist_dist: "Distance", hist_stops: "Stops", hist_moving: "Moving", history_points: "{n} locations recorded", no_trips: "No trips on this day", no_trips_sub: "When your bag moves, its route shows up here.", walk: "Walk", walk_sub: "{km} · {t}", replay_speed: "Replay speed", zones_safe: "Bag is safe at {z}", zones_out: "Outside your safe zones", inside_now: "Inside now", grp_notif: "Notifications", grp_activity: "Activity", grp_security: "Security", grp_family: "Family", grp_app: "App", jump_app: "App", see_all: "See all", bags_one: "1 bag", bags_n: "{n} bags",
     act_peak: "most at {t}",
     act_hours: "When you walked",
     height: "Height (cm)",
@@ -246,6 +247,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    hist_dist: "دووری", hist_stops: "وەستان", hist_moving: "جووڵە", history_points: "{n} شوێن تۆمار کراوە", no_trips: "لەم ڕۆژەدا هیچ گەشتێک نییە", no_trips_sub: "کاتێک جانتاکەت دەجووڵێت، ڕێگاکەی لێرە دەردەکەوێت.", walk: "پیاسە", walk_sub: "{km} · {t}", replay_speed: "خێرایی دووبارەکردنەوە", zones_safe: "جانتاکە لە {z} پارێزراوە", zones_out: "لە دەرەوەی ناوچە پارێزراوەکانە", inside_now: "ئێستا لە ناوەوەیە", grp_notif: "ئاگادارکردنەوەکان", grp_activity: "چالاکی", grp_security: "ئاسایش", grp_family: "خێزان", grp_app: "ئەپ", jump_app: "ئەپ", see_all: "هەمووی ببینە", bags_one: "١ جانتا", bags_n: "{n} جانتا",
     act_peak: "زۆرترین لە {t}",
     act_hours: "کەی ڕۆیشتیت",
     height: "باڵا (سم)",
@@ -488,6 +490,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    hist_dist: "المسافة", hist_stops: "التوقفات", hist_moving: "الحركة", history_points: "تم تسجيل {n} موقعاً", no_trips: "لا توجد رحلات في هذا اليوم", no_trips_sub: "عندما تتحرك حقيبتك يظهر مسارها هنا.", walk: "مشي", walk_sub: "{km} · {t}", replay_speed: "سرعة الإعادة", zones_safe: "الحقيبة بأمان في {z}", zones_out: "خارج مناطقك الآمنة", inside_now: "بالداخل الآن", grp_notif: "الإشعارات", grp_activity: "النشاط", grp_security: "الأمان", grp_family: "العائلة", grp_app: "التطبيق", jump_app: "التطبيق", see_all: "عرض الكل", bags_one: "حقيبة واحدة", bags_n: "{n} حقائب",
     act_peak: "الأكثر عند {t}",
     act_hours: "متى مشيت",
     height: "الطول (سم)",

@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.23';
+  const APP_VERSION = '2026.10.23b';
 
   // ---------- state ----------
   const state = {
@@ -86,8 +86,19 @@
   }
 
   // numbers that change (battery %) count to the new value and pop a little
-  function setStat(el, text) {
+  function setStat(el, text, countUp) {
     if (el.textContent === text) return;
+    // count up from 0 the first time a number appears (only where asked: History, Activity)
+    const m = /^(\d[\d,]*(?:\.\d+)?)(\D*)$/.exec(text);
+    if (countUp && m && ['', '—', '…', '0'].includes(el.textContent.trim()) && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const to = parseFloat(m[1].replace(/,/g, '')), dec = (m[1].split('.')[1] || '').length, comma = m[1].includes(',');
+      const fmt = (v) => (comma ? v.toLocaleString('en-US', { maximumFractionDigits: dec }) : v.toFixed(dec)) + m[2];
+      const t0 = performance.now();
+      const step = (now) => { const k = Math.min(1, (now - t0) / 600), e = 1 - Math.pow(1 - k, 3); el.textContent = k < 1 ? fmt(dec ? to * e : Math.round(to * e)) : text; if (k < 1) requestAnimationFrame(step); };
+      el.textContent = fmt(0);
+      requestAnimationFrame(step);
+      return;
+    }
     const from = parseInt(el.textContent, 10), to = parseInt(text, 10);
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     el.classList.remove('bump'); void el.offsetWidth; if (!reduce && el.textContent !== '—' && el.textContent) el.classList.add('bump');
@@ -146,7 +157,7 @@
 
   function clockTime(iso) {
     const locale = state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn');
-    try { return new Date(iso).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }); }
+    try { return new Date(iso).toLocaleTimeString(locale, state.lang === 'ckb' ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' } : { hour: '2-digit', minute: '2-digit' }); }
     catch (e) { return new Date(iso).toTimeString().slice(0, 5); }
   }
 
@@ -363,6 +374,7 @@
       if (!passed) { await sb.auth.signOut(); state.user = null; showView('view-auth'); return; }
     }
     $('#account-email').textContent = state.user.email || '';
+    $('#acc-avatar').textContent = ((state.user.email || '?').trim().charAt(0) || '?').toUpperCase();
     loadSettings();
     const cached = readCache();
     if (cached && cached.trackers.length && localStorage.getItem('trackly-setup-done') && !sessionStorage.getItem('trackly-pending-join')) {
@@ -1138,6 +1150,7 @@
     if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); }
     renderPlaces();
     renderMapPanel();
+    if (tab !== 'map') { staggerIn($('#panel-' + tab)); $$('.segmented.has-pill').forEach(syncSegPill); }
   }
 
   // ---------- history ----------
@@ -1156,11 +1169,83 @@
     return [start, end];
   }
 
+  // ---------- history (Journey tab) ----------
+  const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const dateLocale = () => (state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn'));
+  const TL_ICON = {
+    start: 'M8 5l11 7-11 7z',
+    end: 'M5 21V4M5 4h11l-2 4 2 4H5',
+    stop: 'M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21zM12 7.5a2 2 0 1 0 0 4 2 2 0 0 0 0-4z',
+    drive: 'M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3z',
+    walk: 'M13 4a2 2 0 1 0 0 .01M9 21l2-6 3 2v4M7 12l3-4 4 1 3 3',
+    zone: 'M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z'
+  };
+  const CKB_DAYS = ['یەکشەممە', 'دووشەممە', 'سێشەممە', 'چوارشەممە', 'پێنجشەممە', 'هەینی', 'شەممە'];
+  const CKB_MONTHS = ['کانوونی دووەم', 'شوبات', 'ئادار', 'نیسان', 'ئایار', 'حوزەیران', 'تەممووز', 'ئاب', 'ئەیلوول', 'تشرینی یەکەم', 'تشرینی دووەم', 'کانوونی یەکەم'];
+  function longDate(d) {
+    if (state.lang === 'ckb') return CKB_DAYS[d.getDay()] + '، ' + d.getDate() + 'ی ' + CKB_MONTHS[d.getMonth()];
+    return d.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' });
+  }
+  function historyDayLabel(start) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const diff = Math.round((today - start) / 86400e3);
+    if (diff === 0) return t('today');
+    if (diff === 1) return t('yesterday');
+    return longDate(start);
+  }
+  // grey shimmering cards while something loads
+  function skeleton(ul, n) {
+    ul.innerHTML = '';
+    for (let i = 0; i < n; i++) { const li = document.createElement('li'); li.className = 'r2-skel'; li.innerHTML = '<i></i><b></b>'; ul.appendChild(li); }
+  }
+  // cards fade up one after another (only the first 8)
+  function staggerIn(root, sel) {
+    if (!root) return;
+    const items = [...root.querySelectorAll(sel || ':scope > *')].filter((e) => !e.hidden && e.offsetParent !== null).slice(0, 8);
+    items.forEach((el, i) => { el.classList.remove('r2-in'); el.style.setProperty('--i', i); void el.offsetWidth; el.classList.add('r2-in'); });
+  }
+  // walks: walking-speed parts of the path (5 min+, 300 m+)
+  function findWalks(pts) {
+    const out = [];
+    let cur = null, lastT = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      const ta = new Date(a.created_at).getTime(), tb = new Date(b.created_at).getTime(), s = (tb - ta) / 1000;
+      if (s <= 0 || s > 360) continue;
+      const d = distanceM(a, b), kmh = d / s * 3.6;
+      if (d < 15 || kmh < 1.5 || kmh > 7) continue;
+      if (!cur || ta - lastT > 4 * 60e3) { if (cur) out.push(cur); cur = { from: a.created_at, to: b.created_at, m: 0, pts: [a] }; }
+      cur.m += d; cur.to = b.created_at; cur.pts.push(b); lastT = tb;
+    }
+    if (cur) out.push(cur);
+    return out.map((w) => Object.assign(w, { mins: (new Date(w.to) - new Date(w.from)) / 60000 })).filter((w) => w.m >= 300 && w.mins >= 5);
+  }
+  // the route draws itself on the map (about 1 second)
+  function drawRouteIn(line) {
+    const path = line.getElement && line.getElement();
+    if (!path || !path.getTotalLength || reduceMotion()) return;
+    const len = path.getTotalLength();
+    path.style.transition = 'none';
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len;
+    path.getBoundingClientRect();
+    path.style.transition = 'stroke-dashoffset 1s cubic-bezier(0.2, 0.8, 0.2, 1)';
+    path.style.strokeDashoffset = '0';
+    setTimeout(() => { path.style.transition = ''; path.style.strokeDasharray = ''; path.style.strokeDashoffset = ''; }, 1100);
+  }
+  function fitTo(pts) {
+    map.m.fitBounds(L.latLngBounds(pts.map((q) => [q.lat, q.lng])), { paddingTopLeft: [32, 140], paddingBottomRight: [32, coverH() + 24], maxZoom: 16 });
+  }
+
   async function loadHistory() {
     if (!state.tracker) return;
-    renderActivity();
-    await loadCams();
     const [start, end] = historyRange();
+    $('#hist-day').textContent = historyDayLabel(start);
+    renderActivity(true);
+    const list = $('#timeline');
+    skeleton(list, 4);
+    ['#hist-km', '#hist-stops', '#hist-moving'].forEach((s) => { $(s).textContent = '—'; $(s).classList.add('r2-shimmer'); });
+    await loadCams();
     const { data, error } = await sb.from('locations')
       .select('lat, lng, battery, created_at')
       .eq('tracker_id', state.tracker.id)
@@ -1169,8 +1254,8 @@
       .order('created_at', { ascending: true })
       .limit(3000);
     if (state.tab !== 'history') return;
+    ['#hist-km', '#hist-stops', '#hist-moving'].forEach((s) => $(s).classList.remove('r2-shimmer'));
     if (map.history) { map.m.removeLayer(map.history); map.history = null; }
-    const list = $('#timeline');
     list.innerHTML = '';
     if (error) { toast(errorText(error)); return; }
     const pts = data || [];
@@ -1180,81 +1265,111 @@
     stopReplay();
     $('#replay').hidden = pts.length < 2;
     if (!pts.length) {
-      $('#history-summary').textContent = t('history_empty');
+      $('#history-summary').textContent = '';
+      ['#hist-km', '#hist-stops', '#hist-moving'].forEach((s) => { $(s).textContent = '0'; });
+      const li = document.createElement('li');
+      li.className = 'r2-empty';
+      li.innerHTML = '<span class="r2-empty-ic"><svg viewBox="0 0 24 24"><path d="' + TL_ICON.stop + '"/></svg></span><strong></strong><span></span>';
+      li.querySelector('strong').textContent = t('no_trips');
+      li.querySelector('span:last-child').textContent = t('no_trips_sub');
+      list.appendChild(li);
+      staggerIn(list);
       return;
     }
 
-    let meters = 0;
-    for (let i = 1; i < pts.length; i++) meters += distanceM(pts[i - 1], pts[i]);
-    $('#history-summary').textContent = t('history_summary', { n: pts.length, km: (meters / 1000).toFixed(1) });
+    // distance (GPS jumps over 150 km/h left out) and time moving
+    let meters = 0, movingS = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const d = distanceM(pts[i - 1], pts[i]), s = (new Date(pts[i].created_at) - new Date(pts[i - 1].created_at)) / 1000;
+      if (s > 0 && d / s * 3.6 > 150) continue;
+      meters += d;
+      if (s > 0 && s <= 600 && d / s * 3.6 >= 2) movingS += s;
+    }
+    const stops = findStops(pts), drives = findDrives(pts), walks = findWalks(pts);
+    setStat($('#hist-km'), fmtDistance(meters), true);
+    setStat($('#hist-stops'), String(stops.length), true);
+    setStat($('#hist-moving'), movingS >= 60 ? fmtDuration(movingS / 60) : '0', true);
+    $('#history-summary').textContent = t('history_points', { n: pts.length });
 
     const accent = cssVar('--accent');
     const group = L.layerGroup();
-    const line = L.polyline(pts.map((p) => [p.lat, p.lng]), { color: accent, weight: 4, lineJoin: 'round' }).addTo(group);
+    const line = L.polyline(pts.map((p) => [p.lat, p.lng]), { color: accent, weight: 4, lineJoin: 'round', lineCap: 'round' }).addTo(group);
     L.circleMarker([pts[0].lat, pts[0].lng], { radius: 7, color: accent, weight: 3, fillColor: cssVar('--bg'), fillOpacity: 1 }).addTo(group);
     L.circleMarker([pts[pts.length - 1].lat, pts[pts.length - 1].lng], { radius: 9, color: cssVar('--bg'), weight: 3, fillColor: cssVar('--primary'), fillOpacity: 1 }).addTo(group);
     // replay dot: drag the slider (or press play) to see where the bag was at each moment
     map.replayDot = L.circleMarker([pts[0].lat, pts[0].lng], { radius: 9, color: '#FFFFFF', weight: 3, fillColor: cssVar('--danger'), fillOpacity: 1, interactive: false }).addTo(group);
+    stops.forEach((s, k) => {
+      L.marker([s.lat, s.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="stop-pin">' + (k + 1) + '</div>' }) }).addTo(group);
+    });
     map.history = group.addTo(map.m);
     const range = $('#replay-range');
     range.max = pts.length - 1; range.value = 0;
     setReplay(0);
     // leave room for the top bar and the bottom card, so the whole route stays visible
-    const sheetH = coverH();
-    map.m.fitBounds(line.getBounds(), { paddingTopLeft: [32, 140], paddingBottomRight: [32, sheetH + 24], maxZoom: 16 });
+    map.m.fitBounds(line.getBounds(), { paddingTopLeft: [32, 140], paddingBottomRight: [32, coverH() + 24], maxZoom: 16, animate: false });
+    drawRouteIn(line);
 
-    // timeline: first point, safe-zone changes, last point
-    const events = [{ time: pts[0].created_at, title: t('started'), sub: '' }];
+    // timeline: start, safe-zone changes, stops, walks, drives, last point
+    const events = [{ time: pts[0].created_at, kind: 'start', title: t('started'), sub: '' }];
     const zones = state.zones;
-    let inside = zones.map((z) => distanceM(pts[0], z) <= z.radius_m);
+    const inside = zones.map((z) => distanceM(pts[0], z) <= z.radius_m);
     for (let i = 1; i < pts.length; i++) {
       zones.forEach((z, zi) => {
         const now = distanceM(pts[i], z) <= z.radius_m;
         if (now !== inside[zi]) {
-          events.push({ time: pts[i].created_at, title: now ? t('arrived_zone', { z: z.name }) : t('left_zone', { z: z.name }), sub: '' });
+          events.push({ time: pts[i].created_at, kind: 'zone', title: now ? t('arrived_zone', { z: z.name }) : t('left_zone', { z: z.name }), sub: '' });
           inside[zi] = now;
         }
       });
     }
+    stops.forEach((s, k) => events.push({ time: s.from, kind: 'stop', title: t('stop'), sub: fmtDuration(s.mins) + ' · ' + clockTime(s.from) + '–' + clockTime(s.to), stop: s, n: k + 1 }));
+    drives.forEach((dr) => events.push({ time: dr.from, kind: 'drive', title: t('drive'), sub: driveText(dr) + ' · ' + clockTime(dr.from) + '–' + clockTime(dr.to), path: dr.pts }));
+    walks.forEach((w) => events.push({ time: w.from, kind: 'walk', title: t('walk'), sub: t('walk_sub', { km: fmtDistance(w.m), t: fmtDuration(w.mins) }) + ' · ' + clockTime(w.from) + '–' + clockTime(w.to), path: w.pts }));
     const last = pts[pts.length - 1];
-    if (pts.length > 1) events.push({ time: last.created_at, title: t('last_point'), sub: typeof last.battery === 'number' ? t('battery') + ' ' + last.battery + '%' : '' });
-
-    const stops = findStops(pts);
-    stops.forEach((s, k) => {
-      events.push({ time: s.from, title: t('stop'), sub: fmtDuration(s.mins) + ' · ' + clockTime(s.from) + '–' + clockTime(s.to), stop: s, n: k + 1 });
-      L.marker([s.lat, s.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13], html: '<div class="stop-pin">' + (k + 1) + '</div>' }) }).addTo(group);
-    });
-    const drives = findDrives(pts);
-    drives.forEach((dr) => events.push({ time: dr.from, title: t('drive'), sub: driveText(dr) + ' · ' + clockTime(dr.from) + '–' + clockTime(dr.to), drive: dr }));
+    if (pts.length > 1) events.push({ time: last.created_at, kind: 'end', title: t('last_point'), sub: typeof last.battery === 'number' ? t('battery') + ' ' + last.battery + '%' : '' });
     events.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
-    if (stops.length) $('#history-summary').textContent += ' · ' + t('stops_n', { n: stops.length });
-    if (drives.length) $('#history-summary').textContent += ' · ' + t('drives_n', { n: drives.length });
     events.forEach((ev) => {
       const li = document.createElement('li');
-      if (ev.stop) { li.className = 'is-stop'; li.dataset.n = ev.n; }
-      if (ev.drive) { li.className = 'is-drive'; li.addEventListener('click', () => map.m.fitBounds(L.latLngBounds(ev.drive.pts.map((q) => [q.lat, q.lng])), { paddingTopLeft: [32, 140], paddingBottomRight: [32, coverH() + 24], maxZoom: 16 })); }
+      li.className = 'tl-item tl-' + ev.kind;
       const time = document.createElement('time');
       time.textContent = clockTime(ev.time);
+      const ic = document.createElement('span');
+      ic.className = 'tl-ic';
+      ic.innerHTML = ev.kind === 'stop' ? '<b>' + ev.n + '</b>' : '<svg viewBox="0 0 24 24"><path d="' + TL_ICON[ev.kind] + '"/></svg>';
       const box = document.createElement('div');
+      box.className = 'tl-body';
       const strong = document.createElement('strong');
       strong.textContent = ev.title;
       box.appendChild(strong);
       if (ev.sub) { const span = document.createElement('span'); span.textContent = ev.sub; box.appendChild(span); }
-      if (ev.stop) stopName(ev.stop).then((nm) => { strong.textContent = ev.n + '. ' + nm; });
-      if (ev.stop) li.addEventListener('click', () => map.m.setView([ev.stop.lat, ev.stop.lng], 17));
-      li.append(time, box);
+      if (ev.stop) stopName(ev.stop).then((nm) => { strong.textContent = nm; });
+      const go = ev.stop ? () => map.m.setView([ev.stop.lat, ev.stop.lng], 17) : (ev.path ? () => fitTo(ev.path) : null);
+      if (go) {
+        li.classList.add('tl-tap');
+        li.tabIndex = 0;
+        li.setAttribute('role', 'button');
+        li.addEventListener('click', go);
+        li.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+      }
+      li.append(time, ic, box);
       list.appendChild(li);
     });
+    staggerIn(list);
   }
 
   // ---------- history replay ----------
-  let replayTimer = null;
+  let replayTimer = null, replaySpeed = 1;
   function setReplay(i) {
     const pts = state.historyPts;
     if (!pts.length || !map.replayDot) return;
-    const p = pts[Math.max(0, Math.min(pts.length - 1, i))];
+    const k = Math.max(0, Math.min(pts.length - 1, i));
+    const p = pts[k];
     map.replayDot.setLatLng([p.lat, p.lng]);
-    $('#replay-time').textContent = clockTime(p.created_at) + (typeof p.battery === 'number' ? ' · ' + p.battery + '%' : '');
+    $('#replay-clock').textContent = clockTime(p.created_at);
+    $('#replay-batt').textContent = typeof p.battery === 'number' ? p.battery + '%' : '';
+    $('#replay-batt').hidden = typeof p.battery !== 'number';
+    const r = $('#replay-range');
+    r.style.setProperty('--fill', (Number(r.max) ? k / Number(r.max) * 100 : 0) + '%');
   }
   function stopReplay() {
     clearInterval(replayTimer); replayTimer = null;
@@ -1264,16 +1379,20 @@
     if (replayTimer) { stopReplay(); return; }
     const range = $('#replay-range');
     if (Number(range.value) >= Number(range.max)) range.value = 0;
-    // the whole day plays in about 12 seconds
-    const stepBy = Math.max(1, Math.round(state.historyPts.length / 150));
+    // the whole day plays in about 12 seconds at 1×
     $('#replay-play').classList.add('playing');
     replayTimer = setInterval(() => {
+      const stepBy = Math.max(1, Math.round(state.historyPts.length / 150)) * replaySpeed;
       const v = Math.min(Number(range.max), Number(range.value) + stepBy);
       range.value = v; setReplay(v);
       const p = state.historyPts[v];
       if (p && !map.m.getBounds().pad(-0.15).contains([p.lat, p.lng])) map.m.panTo([p.lat, p.lng], { animate: true });
       if (v >= Number(range.max)) stopReplay();
     }, 80);
+  }
+  function setReplaySpeed(n) {
+    replaySpeed = [1, 2, 4].includes(n) ? n : 1;
+    $$('#replay-speed .seg').forEach((b) => b.classList.toggle('active', Number(b.dataset.speed) === replaySpeed));
   }
 
   // ---------- safe zones ----------
@@ -1286,17 +1405,31 @@
     renderReminders();
     const list = $('#zone-list');
     list.innerHTML = '';
+    // status line: is the bag inside one of the zones right now?
+    const loc = state.recent[0];
+    const inZone = loc ? zoneAt(loc) : null;
+    const health = $('#zones-health');
+    if (health) {
+      health.hidden = !state.zones.length || !loc;
+      health.className = 'bag-health ' + (inZone ? 'ok' : 'warn');
+      health.querySelector('span').textContent = inZone ? t('zones_safe', { z: inZone.name }) : t('zones_out');
+    }
+    $('#zone-add').hidden = !state.zones.length;
     if (!state.zones.length) {
       const li = document.createElement('li');
-      li.className = 'empty';
-      li.textContent = t('no_zones');
+      li.className = 'r2-empty';
+      li.innerHTML = '<span class="r2-empty-ic"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg></span><strong></strong>' +
+        '<button type="button" class="btn btn-primary r2-add" data-action="add-zone"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span></span></button>';
+      li.querySelector('strong').textContent = t('no_zones');
+      li.querySelector('button span').textContent = t('add_zone');
       list.appendChild(li);
     }
     state.zones.forEach((z) => {
       const li = document.createElement('li');
-      li.className = 'zone-item' + (z.enabled ? '' : ' off');
+      const isIn = !!loc && distanceM(loc, z) <= z.radius_m;
+      li.className = 'zone-item' + (z.enabled ? '' : ' off') + (isIn ? ' inside' : '');
 
-      // tap the zone to edit it (move, resize, rename)
+      // tap the zone: the map flies there, then the editor opens (move, resize, rename)
       const info = document.createElement('button');
       info.type = 'button';
       info.className = 'info';
@@ -1306,13 +1439,21 @@
       icon.innerHTML = kindIcon(z.kind);
       const text = document.createElement('span');
       text.className = 'zone-text';
+      const top = document.createElement('span');
+      top.className = 'zone-top';
       const strong = document.createElement('strong');
       strong.textContent = z.name;
+      top.appendChild(strong);
+      if (isIn) { const b = document.createElement('em'); b.className = 'zone-badge'; b.textContent = t('inside_now'); top.appendChild(b); }
       const span = document.createElement('span');
       span.textContent = zoneMeta(z);
-      text.append(strong, span);
+      text.append(top, span);
       info.append(icon, text);
-      info.addEventListener('click', () => startZoneEdit(z));
+      info.addEventListener('click', () => {
+        if (reduceMotion()) { startZoneEdit(z); return; }
+        map.m.flyTo([z.lat, z.lng], z.radius_m > 400 ? 15 : 16, { duration: 0.5 });
+        setTimeout(() => { if (state.tab === 'zones' && !state.zoneEdit) startZoneEdit(z); }, 520);
+      });
 
       const sw = document.createElement('button');
       sw.type = 'button';
@@ -1336,7 +1477,6 @@
         radius: z.radius_m, color: accent, weight: 1.5, dashArray: z.enabled ? null : '4 6',
         fillColor: accent, fillOpacity: z.enabled ? 0.1 : 0.03, interactive: false
       }).addTo(map.zones);
-      // small icon + name in the middle of each zone
       // label on the top edge of the circle, so it never covers the bag in the middle
       L.marker([z.lat + z.radius_m / 111320, z.lng], {
         interactive: state.tab === 'zones', keyboard: false,
@@ -1355,20 +1495,28 @@
   async function toggleZone(z) {
     z.enabled = !z.enabled;          // show it right away
     renderZones();
-    if (navigator.vibrate) navigator.vibrate(8);
     const { error } = await sb.from('safe_zones').update({ enabled: z.enabled }).eq('id', z.id);
     if (error) { z.enabled = !z.enabled; renderZones(); toast(errorText(error)); return; }   // undo
     saveCache();
   }
 
+  // delete straight away, with Undo for a few seconds (puts the same zone back)
   async function deleteZone(z, fromEditor) {
-    if (!z || !window.confirm(t('delete_zone_q', { n: z.name }))) return;
+    if (!z) return;
     const { error } = await sb.from('safe_zones').delete().eq('id', z.id);
     if (error) { toast(errorText(error)); return; }
     state.zones = state.zones.filter((x) => x.id !== z.id);
     if (fromEditor) endZoneEdit();
     renderZones();
-    toast(t('toast_zone_deleted'));
+    saveCache();
+    toastUndo(t('toast_zone_deleted'), async () => {
+      const copy = { tracker_id: z.tracker_id || state.tracker.id, name: z.name, kind: z.kind, lat: z.lat, lng: z.lng, radius_m: z.radius_m, notify_on: z.notify_on, enabled: z.enabled };
+      const res = await sb.from('safe_zones').insert(copy).select().single();
+      if (res.error) { toast(errorText(res.error)); return; }
+      state.zones.push(res.data);
+      renderZones();
+      saveCache();
+    });
   }
 
   // ---- zone editor: new zone, or edit an existing one (z) ----
@@ -1385,6 +1533,7 @@
   function setRadius(r) {
     $('#zone-radius').value = r;
     $('#zone-radius-value').textContent = fmtDistance(r);
+    $('#zone-radius').style.setProperty('--fill', ((r - 50) / 950 * 100) + '%');
     if (map.editCircle) map.editCircle.setRadius(r);
   }
 
@@ -1767,21 +1916,23 @@
     const hours = usePhone ? (p.h || zeros()) : (b && b.h ? b.h.map((m) => m / L) : zeros());
     return { steps, km, mins, kcal: Math.round(kcal), hours, src: steps ? (usePhone ? 'phone' : 'bag') : '' };
   }
-  function renderActivity() {
+  function renderActivity(animate) {
     const card = $('#act-card');
     if (!card) return;
     const [start] = historyRange();
     const k = dayKey(start), isToday = k === dayKey(Date.now());
     const d = dayActivity(k), goal = stepGoal();
-    $('#act-title').textContent = isToday ? t('act_today') : start.toLocaleDateString(state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn'), { weekday: 'long', day: 'numeric', month: 'short' });
-    $('#act-steps').textContent = fmtNum(d.steps);
+    $('#act-title').textContent = isToday ? t('act_today') : longDate(start);
+    setStat($('#act-steps'), fmtNum(d.steps), true);
     $('#act-goal-txt').textContent = t('act_goal', { n: fmtNum(goal) });
     $('#act-km').textContent = d.km ? fmtDistance(d.km * 1000) : '—';
-    $('#act-kcal').textContent = d.kcal ? fmtNum(d.kcal) : '—';
+    setStat($('#act-kcal'), d.kcal ? fmtNum(d.kcal) : '—', true);
     $('#act-min').textContent = d.mins ? fmtDuration(d.mins) : '—';
     const ring = $('#act-ring-fg'), len = 2 * Math.PI * 52;
     ring.style.strokeDasharray = len;
+    if (animate && !reduceMotion()) { ring.style.transition = 'none'; ring.style.strokeDashoffset = len; ring.getBoundingClientRect(); ring.style.transition = ''; }
     ring.style.strokeDashoffset = len * (1 - Math.min(1, d.steps / goal));
+    if (animate) { card.classList.remove('grow'); void card.offsetWidth; card.classList.add('grow'); }
     card.classList.toggle('done', d.steps >= goal);
     $('#act-src').textContent = d.src === 'phone' ? t('act_src_phone') : (d.src === 'bag' ? t('act_src_bag') : (stepsOn() ? t('act_src_wait') : t('act_src_none')));
     $('#act-resume').hidden = !(act.needTap && stepsOn() && isToday);
@@ -3642,7 +3793,7 @@
     const list = await allAlerts();   // the server's alerts and this phone's (reminders, new place, night guard…)
     ul.innerHTML = '';
     if (!list.length) { const li = document.createElement('li'); li.className = 'empty'; li.textContent = t('no_alerts'); ul.appendChild(li); return; }
-    list.slice(0, max || 8).forEach((a) => {
+    list.slice(0, max || 3).forEach((a) => {
       const li = document.createElement('li');
       li.className = 'alert-item ' + a.kind;
       const strong = document.createElement('strong'); strong.textContent = a.text;
@@ -3925,14 +4076,33 @@
   // =====================================================================
   const BAG_COLORS = ['#E8B86D', '#3DDBB4', '#E8A0A8', '#5B8CFF', '#B38CFF', '#F97316'];
   function bagColor(tr) { return (tr && tr.color) || BAG_COLORS[Math.max(0, state.trackers.indexOf(tr)) % BAG_COLORS.length]; }
+  // Account → Bags: one row per bag (colour, name, battery); tap it to open its settings
   function renderBags() {
     const ul = $('#bag-list');
     if (!ul) return;
+    const cnt = $('#acc-bagcount');
+    if (cnt) cnt.textContent = state.trackers.length === 1 ? t('bags_one') : t('bags_n', { n: state.trackers.length });
+    const open = new Set([...ul.querySelectorAll('.bag-item.open')].map((li) => li.dataset.id));
     ul.innerHTML = '';
     state.trackers.forEach((tr) => {
       const li = document.createElement('li');
       li.className = 'bag-item';
+      li.dataset.id = tr.id;
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'bag-row';
       const dot = document.createElement('span'); dot.className = 'bag-dot'; dot.style.background = bagColor(tr);
+      const txt = document.createElement('span'); txt.className = 'acc-txt';
+      const nm = document.createElement('strong'); nm.textContent = tr.name || tr.device_code;
+      const meta = document.createElement('span');
+      const loc = state.tracker && state.tracker.id === tr.id ? state.recent[0] : null;
+      meta.textContent = [loc && typeof loc.battery === 'number' ? t('battery') + ' ' + loc.battery + '%' : '', tr.device_code].filter(Boolean).join(' · ');
+      txt.append(nm, meta);
+      row.append(dot, txt);
+      row.insertAdjacentHTML('beforeend', '<svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>');
+
+      const more = document.createElement('div');
+      more.className = 'bag-more';
       const name = document.createElement('input'); name.value = tr.name || ''; name.placeholder = tr.device_code; name.maxLength = 40;
       name.setAttribute('aria-label', t('give_name'));
       name.addEventListener('change', () => saveBag(tr, { name: name.value.trim() || tr.device_code }));
@@ -3944,14 +4114,14 @@
         b.addEventListener('click', () => saveBag(tr, { color: c }));
         colors.appendChild(b);
       });
-      const code = document.createElement('span'); code.className = 'bag-code'; code.textContent = tr.device_code;
       const mine = !tr.owner_id || !state.user || tr.owner_id === state.user.id;
       name.disabled = !mine;
       const fam = document.createElement('div'); fam.className = 'bag-family';
       const famTitle = document.createElement('span'); famTitle.className = 'label'; famTitle.textContent = t('family_access');
       const members = document.createElement('div'); members.className = 'members';
       fam.append(famTitle, members);
-      const acts = document.createElement('div'); acts.className = 'bag-acts';
+      more.append(name);
+      if (mine) more.append(colors);
       if (mine) {
         const night = document.createElement('div'); night.className = 'row-between night-row';
         const nl = document.createElement('div');
@@ -3962,20 +4132,65 @@
         nsw.setAttribute('aria-checked', String(!!tr.night_saver)); nsw.setAttribute('aria-label', t('night_title'));
         nsw.addEventListener('click', () => setNightSaver(tr, !tr.night_saver));
         night.append(nl, nsw);
-        li.appendChild(night);
+        more.append(night);
+      }
+      more.append(fam);
+      if (mine) {
+        const acts = document.createElement('div'); acts.className = 'bag-acts';
         const inv = document.createElement('button'); inv.type = 'button'; inv.className = 'btn btn-secondary'; inv.textContent = t('invite_family');
         inv.addEventListener('click', () => inviteFamily(tr));
-        const un = document.createElement('button'); un.type = 'button'; un.className = 'btn btn-ghost danger-text'; un.textContent = t('unpair');
+        const un = document.createElement('button'); un.type = 'button'; un.className = 'btn btn-danger-soft'; un.textContent = t('unpair');
         un.addEventListener('click', () => unpair(tr));
         acts.append(inv, un);
+        more.append(acts);
       }
-      li.append(dot, name, code, colors, fam, acts);
-      const nr = li.querySelector('.night-row'); if (nr) li.insertBefore(nr, fam);
+      const isOpen = open.has(tr.id);
+      more.hidden = !isOpen;
+      li.classList.toggle('open', isOpen);
+      row.setAttribute('aria-expanded', String(isOpen));
+      row.addEventListener('click', () => {
+        const o = !li.classList.contains('open');
+        li.classList.toggle('open', o); more.hidden = !o; row.setAttribute('aria-expanded', String(o));
+      });
+      li.append(row, more);
       renderMembers(tr, members);
-      if (!mine) colors.hidden = true;
       ul.appendChild(li);
     });
   }
+  // the jump chip of the section you're looking at lights up
+  function setupAccJump() {
+    if (!window.IntersectionObserver) return;
+    const chips = $$('.acc-jump .chip');
+    const seen = new Map();
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => seen.set(e.target.id, e.isIntersecting));
+      const first = chips.find((c) => seen.get(c.dataset.target));
+      if (first) chips.forEach((c) => c.classList.toggle('active', c === first));
+    }, { root: $('#sheet'), rootMargin: '-64px 0px -55% 0px', threshold: 0 });
+    chips.forEach((c) => { const s = document.getElementById(c.dataset.target); if (s) io.observe(s); });
+  }
+  // segmented controls: a pill slides to the chosen option
+  function syncSegPill(seg) {
+    const pill = seg.querySelector(':scope > .seg-pill'), on = seg.querySelector(':scope > .seg.active');
+    if (!pill) return;
+    pill.style.opacity = on && on.offsetWidth ? '1' : '0';
+    if (on && on.offsetWidth) { pill.style.width = on.offsetWidth + 'px'; pill.style.transform = 'translateX(' + on.offsetLeft + 'px)'; }
+    if (!seg.classList.contains('pill-ready') && on && on.offsetWidth) requestAnimationFrame(() => seg.classList.add('pill-ready'));
+  }
+  function setupSegPills() {
+    $$('.segmented').forEach((seg) => {
+      if (seg.closest('#panel-map, #panel-route') || seg.querySelector(':scope > .seg-pill')) return;
+      const pill = document.createElement('span');
+      pill.className = 'seg-pill';
+      pill.setAttribute('aria-hidden', 'true');
+      seg.prepend(pill);
+      seg.classList.add('has-pill');
+      new MutationObserver(() => syncSegPill(seg)).observe(seg, { attributes: true, subtree: true, attributeFilter: ['class'] });
+      if (window.ResizeObserver) new ResizeObserver(() => syncSegPill(seg)).observe(seg);
+      syncSegPill(seg);
+    });
+  }
+
   async function saveBag(tr, values) {
     const { error } = await sb.rpc('set_tracker_info', { p_tracker: tr.id, p_name: values.name ?? tr.name, p_color: values.color ?? tr.color ?? null });
     if (error) { toast(errorText(error)); return; }
@@ -4500,7 +4715,8 @@
       else if (a === 'close-report') closeReport();
       else if (a === 'print-report') window.print();
       else if (a === 'share-report') shareReport();
-      else if (a === 'theme') applyTheme(el.dataset.themePick);
+      else if (a === 'theme') { const go = () => applyTheme(el.dataset.themePick); if (document.startViewTransition && !reduceMotion()) document.startViewTransition(go); else go(); }   // smooth crossfade
+      else if (a === 'replay-speed') setReplaySpeed(Number(el.dataset.speed));
       else if (a === 'backend') setBackend(!CFG.fakeBackend ? false : true);
       else if (a === 'add-zone') startZoneEdit();
       else if (a === 'cancel-zone') endZoneEdit();
@@ -4627,7 +4843,9 @@
     applyScheme(schemePref(), true);
     applySize(localStorage.getItem('trackly-size'), true);
     // a tiny tap feel on the main buttons (Android)
-    document.addEventListener('click', (e) => { if (navigator.vibrate && e.target.closest('.tab, .fab, .ab, .quick-btn, .seg, .switch, .pchip')) navigator.vibrate(8); }, true);
+    document.addEventListener('click', (e) => { if (!navigator.vibrate) return; if (e.target.closest('.switch')) navigator.vibrate(6); else if (e.target.closest('.tab, .fab, .ab, .quick-btn, .seg, .pchip')) navigator.vibrate(8); }, true);
+    setupSegPills();
+    setupAccJump();
     takeLinkAction();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open
