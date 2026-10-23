@@ -1241,3 +1241,57 @@ html[data-size="xl"] .alert-item span { font-size: 15px; }
 
 /* narrow phones: the bag name needs the room more than the logo word (the bell sits in the bar now) */
 @media (max-width: 440px) { .pill-main .logo, .pill-main .divider { display: none; } .pill-main { padding-inline-start: 14px; } }
+
+/* ===================================================================== */
+/* REDESIGN (Oct 23): one search bar on top, a professional bag card      */
+/* ===================================================================== */
+.search-bar {
+  flex: 1; min-width: 0; height: 50px; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-radius: 25px;
+  color: var(--text-2); font: inherit; font-size: 15px; text-align: start; cursor: pointer; box-shadow: var(--shadow);
+}
+.search-bar svg { width: 20px; height: 20px; flex: none; color: var(--text); stroke-width: 2.2; }
+.search-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .bell-btn { width: 50px; height: 50px; box-shadow: var(--shadow); }
+.places-bar { top: calc(76px + var(--safe-top)); }
+.wx-pill { top: calc(76px + var(--safe-top)); }
+
+/* bag card header: colour dot, name (tap to switch bag), status line */
+.bag-head { display: flex; align-items: flex-start; gap: 12px; }
+.bag-head .pill-dot { width: 14px; height: 14px; margin-top: 9px; }
+.bag-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.bag-name-row { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.bag-name-row h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 22px; font-weight: 700; }
+.bag-chevron { display: none; width: 22px; height: 22px; flex: none; color: var(--text-2); stroke-width: 2.4; }
+.bag-name-row #tracker-select { position: absolute; inset: 0; opacity: 0; pointer-events: none; width: 100%; height: 100%; }
+.bag-name-row.multi .bag-chevron { display: block; }
+.bag-name-row.multi #tracker-select { pointer-events: auto; cursor: pointer; }
+.chip-status:not(.lost) { display: none; }
+.bag-where { margin: 6px 0 0; }
+#bag-zone { display: none !important; }      /* the status line already says "Safe at Home" */
+
+/* round action buttons, one row you can swipe (like Google Maps' place card) */
+.normal-actions { margin: 4px -20px 0; }
+.act-row { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 4px 20px 8px; scroll-snap-type: x proximity; }
+.act-row::-webkit-scrollbar { display: none; }
+.ab { flex: none; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 64px; padding: 0;
+  border: none; background: none; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; line-height: 1.2; }
+.ab-ic { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--card-2); border: 1px solid var(--line); color: var(--accent-strong); transition: transform 0.12s ease, background 0.2s ease; }
+.ab-ic svg { width: 22px; height: 22px; stroke-width: 2; }
+.ab-primary .ab-ic { background: var(--primary); color: var(--on-primary); border-color: transparent; box-shadow: var(--shadow-sm); }
+.ab:active .ab-ic { transform: scale(0.92); }
+.ab:disabled { opacity: 0.45; cursor: default; }
+.ab.active .ab-ic, #park-btn.on .ab-ic { background: var(--accent-soft); border-color: var(--accent); }
+/* "Hold: mark lost" — always there, but calmer than a big red block */
+.hold-soft { width: 100%; min-height: 50px; background: var(--danger-soft); color: var(--danger); border: 1.5px solid color-mix(in srgb, var(--danger) 45%, transparent); box-shadow: none; }
+.hold-soft .hold-fill { background: var(--danger); }
+.hold-soft.holding .hold-text { color: #fff; }
+#hold-help { margin-top: -4px; }
+.sheet.collapsed .normal-actions, .sheet.collapsed #hold-lost, .sheet.collapsed .bag-where { display: none !important; }
+
+/* the bag card header reads as one block */
+.bag-info { display: flex; flex-direction: column; gap: 4px; }
+.bag-info .bag-where, .bag-info .near { margin: 2px 0 0; }
+.bag-info .bag-where { padding-inline-start: 26px; }
+.bag-info .near { padding-inline-start: 26px; }
+.ab { width: auto; min-width: 64px; padding: 0 2px; }
+.act-row { gap: 14px; }

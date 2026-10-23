@@ -143,16 +143,9 @@
     <div id="map" aria-label="Map"></div>
 
     <div class="topbar">
-      <div class="pill pill-main">
-        <span class="logo">Trackly</span>
-        <span class="divider"></span>
-        <span id="pill-dot" class="pill-dot" aria-hidden="true"></span>
-        <select id="tracker-select" aria-label="Tracker"></select>
-      </div>
+      <button class="search-bar pill" type="button" data-action="open-search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span data-i18n="search_map_ph">Search places…</span></button>
       <span id="live-badge" class="live-badge" hidden><span class="dot"></span><span data-i18n="live">LIVE</span></span>
       <button id="bell-btn" class="icon-btn pill bell-btn" type="button" data-action="open-alerts" data-i18n-aria="alerts" aria-label="Alerts"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span id="bell-count" class="bell-count" hidden></span></button>
-      <button class="icon-btn pill" type="button" data-action="open-search" data-i18n-aria="search" aria-label="Search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></button>
-      <button class="lang-btn pill-lang" type="button" data-action="lang" aria-label="Language">EN</button>
     </div>
 
     <div id="battery-banner" class="banner" hidden>
@@ -197,6 +190,10 @@
         <button type="button" class="style-opt" data-action="pick-style" data-style="hybrid"><span class="swatch sw-hybrid"></span><span data-i18n="style_hybrid">Satellite + labels</span></button>
       </div>
       <div class="row-between picker-row">
+        <span data-i18n="places_on_map">Places on the map</span>
+        <button id="btn-places" class="switch" type="button" role="switch" aria-checked="true" data-action="toggle-places" data-i18n-aria="places" aria-label="Places"></button>
+      </div>
+      <div class="row-between picker-row">
         <span data-i18n="show_path">Today’s path</span>
         <button id="btn-path" class="switch" type="button" role="switch" aria-checked="false" data-action="toggle-path" data-i18n-aria="show_path" aria-label="Today’s path"></button>
       </div>
@@ -219,7 +216,6 @@
     </div>
 
     <div id="map-controls" class="map-controls">
-      <button id="btn-places" class="fab" type="button" data-action="toggle-places" data-i18n-aria="places" aria-label="Places" title="Places"><span class="fab-label" data-i18n="places">Places</span><svg viewBox="0 0 24 24"><path d="M4 9l1.5-5h13L20 9M4 9h16M4 9v1a2.7 2.7 0 0 0 5.3 0 2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0V9M5 12v8h14v-8M10 20v-5h4v5"/></svg></button>
       <button id="btn-style" class="fab" type="button" data-action="map-style" data-i18n-aria="map_style" aria-label="Map style" title="Map style"><span class="fab-label" data-i18n="map_style">Map style</span>
         <svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
       </button>
@@ -237,21 +233,32 @@
 
       <!-- Map tab -->
       <div id="panel-map" class="panel">
-        <div class="row-between">
-          <div>
+        <div class="bag-info">
+        <div class="bag-head">
+          <span id="pill-dot" class="pill-dot" aria-hidden="true"></span>
+          <div class="bag-title">
             <p id="lost-label" class="lost-label" hidden data-i18n="lost_on">Lost mode is on</p>
-            <h2 id="bag-name">—</h2>
+            <div class="bag-name-row"><h2 id="bag-name">—</h2><svg class="bag-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+              <select id="tracker-select" aria-label="Choose bag"></select></div>
             <p id="bag-health" class="bag-health wait"><i aria-hidden="true"></i><span></span></p>
-            <p class="muted small"><span id="bag-area">—</span><span id="bag-distance"></span></p>
-            <p id="bag-near" class="near" hidden></p>
-            <p id="bag-zone" class="zone-chip" hidden></p>
-            <p id="parked-chip" class="parked-chip" hidden><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span data-i18n="parked_chip">Parked · movement alarm on</span></p>
           </div>
-          <div class="head-side">
-            <span id="mode-chip" class="chip-status">—</span>
-            <button class="icon-btn" type="button" data-action="directions" data-i18n-aria="directions" aria-label="Directions">
-              <svg class="flip-rtl" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>
-            </button>
+          <span id="mode-chip" class="chip-status">—</span>
+        </div>
+        <p class="muted small bag-where"><span id="bag-area">—</span><span id="bag-distance"></span></p>
+        <p id="bag-near" class="near" hidden></p>
+        <p id="bag-zone" class="zone-chip" hidden></p>
+        <p id="parked-chip" class="parked-chip" hidden><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span data-i18n="parked_chip">Parked · movement alarm on</span></p>
+        </div>
+
+        <div id="normal-actions" class="normal-actions">
+          <div class="act-row" role="toolbar">
+            <button class="ab ab-primary" type="button" data-action="directions" data-i18n-aria="directions" aria-label="Directions"><span class="ab-ic"><svg class="flip-rtl" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></span><span data-i18n="directions">Directions</span></button>
+            <button class="ab" type="button" data-action="find-sound"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></span><span data-i18n="beep">Beep</span></button>
+            <button class="ab" type="button" data-action="find-nearby"><span class="ab-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg></span><span data-i18n="find_short">Find</span></button>
+            <button class="ab" type="button" data-action="share-live" data-hours="4"><span class="ab-ic"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg></span><span data-i18n="share_short">Share</span></button>
+            <button class="ab" type="button" id="park-btn" data-action="park"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg></span><span data-i18n="park_btn">Park</span></button>
+            <button class="ab" type="button" data-action="car"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg></span><span data-i18n="car_btn">My car</span></button>
+            <button class="ab" type="button" data-action="report"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/></svg></span><span data-i18n="report_btn">Report</span></button>
           </div>
         </div>
 
@@ -265,20 +272,10 @@
 
         <p id="silent-note" class="note" hidden data-i18n="silent_note">Sound is off so the thief won’t notice the tracker.</p>
 
-        <div id="normal-actions" class="actions">
-          <button class="btn btn-secondary" type="button" data-action="find-nearby" data-i18n="find_nearby">Find nearby</button>
-          <button id="hold-lost" class="btn btn-danger hold" type="button">
-            <span class="hold-fill"></span><span class="hold-text" data-i18n="hold_lost">Hold: mark lost</span>
-          </button>
-        </div>
+        <button id="hold-lost" class="btn btn-danger hold hold-soft" type="button">
+          <span class="hold-fill"></span><span class="hold-text" data-i18n="hold_lost">Hold: mark lost</span>
+        </button>
         <p id="hold-help" class="muted tiny center" data-i18n="hold_help">Press and hold the red button for 2 seconds to start live tracking</p>
-        <div class="quick">
-          <button class="quick-btn" type="button" data-action="share-live" data-hours="4"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg><span data-i18n="share_live_btn">Share live</span></button>
-          <button class="quick-btn" type="button" data-action="report" ><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg><span data-i18n="report_btn">Report</span></button>
-          <button id="park-btn" class="quick-btn" type="button" data-action="park"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg><span data-i18n="park_btn">Park</span></button>
-          <button class="quick-btn" type="button" data-action="find-sound"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg><span data-i18n="beep">Beep</span></button>
-          <button class="quick-btn" type="button" data-action="car"><svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg><span data-i18n="car_btn">My car</span></button>
-        </div>
 
         <div id="lost-actions" class="actions" hidden>
           <button class="btn btn-secondary" type="button" data-action="share" data-i18n="share_live">Share location</button>

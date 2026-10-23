@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.22c';
+  const APP_VERSION = '2026.10.23';
 
   // ---------- state ----------
   const state = {
@@ -401,6 +401,7 @@
       sel.appendChild(o);
     });
     if (cur && state.trackers.some((x) => x.id === cur)) sel.value = cur;
+    document.querySelector('.bag-name-row').classList.toggle('multi', state.trackers.length > 1);
   }
 
   // ---------- pairing ----------
@@ -860,6 +861,7 @@
     $('#silent-note').hidden = !lost;
     $('#normal-actions').hidden = lost;
     $('#hold-help').hidden = lost;
+    $('#hold-lost').hidden = lost;
     $('#lost-actions').hidden = !lost;
     $('#lost-report').hidden = !lost;
 
@@ -3011,6 +3013,32 @@
     });
   }
 
+  // Google-like colours: clearer parks, water, hospitals, schools and buildings; street names a little sooner;
+  // neighbourhood names in calm grey capitals. Applied to the light style (the dark one is recoloured from it).
+  function tuneBaseMap(s) {
+    const set = (id, prop, v) => { const l = s.layers.find((x) => x.id === id); if (l) { l.paint = l.paint || {}; l.paint[prop] = v; } };
+    const lay = (id, prop, v) => { const l = s.layers.find((x) => x.id === id); if (l) { l.layout = l.layout || {}; l.layout[prop] = v; } };
+    const zoom = (id, z) => { const l = s.layers.find((x) => x.id === id); if (l) l.minzoom = z; };
+    set('background', 'background-color', '#F5F3EE');
+    set('landuse_residential', 'fill-color', '#EFECE6');
+    set('park', 'fill-color', '#C9E7BE'); set('park_outline', 'line-color', '#B5DCA6');
+    set('landcover_grass', 'fill-color', '#CDE9C2'); set('landcover_wood', 'fill-color', 'rgba(170, 214, 150, 0.75)');
+    set('landuse_pitch', 'fill-color', '#C8E8BE'); set('landuse_track', 'fill-color', '#C8E8BE');
+    set('landuse_cemetery', 'fill-color', '#DAE6CF');
+    set('landuse_hospital', 'fill-color', '#F9DDE2');
+    set('landuse_school', 'fill-color', '#F4EED6');
+    set('water', 'fill-color', '#A6D3F5');
+    ['waterway_river', 'waterway_other', 'waterway_tunnel'].forEach((id) => set(id, 'line-color', '#A6D3F5'));
+    set('building', 'fill-color', '#E7E3DB'); set('building', 'fill-outline-color', '#D7D1C6');
+    set('building-3d', 'fill-extrusion-color', '#E7E3DB');
+    set('road_minor_casing', 'line-color', '#DAD6CF'); set('road_service_track_casing', 'line-color', '#DFDBD4');
+    set('road_trunk_primary', 'line-color', '#FFE597'); set('road_secondary_tertiary', 'line-color', '#FFF1B8');
+    set('road_trunk_primary_casing', 'line-color', '#EDC66A'); set('road_secondary_tertiary_casing', 'line-color', '#E9CF86');
+    zoom('highway-name-minor', 14.5); zoom('highway-name-path', 15);
+    set('highway-name-minor', 'text-color', '#5F6368'); set('highway-name-major', 'text-color', '#4A4E54');
+    set('label_other', 'text-color', '#7A7E85'); lay('label_other', 'text-transform', 'uppercase'); lay('label_other', 'text-letter-spacing', 0.08);
+    ['label_city', 'label_city_capital', 'label_town', 'label_village'].forEach((id) => { set(id, 'text-color', '#33373D'); set(id, 'text-halo-width', 1.6); set(id, 'text-halo-color', '#FFFFFF'); });
+  }
   async function buildMapStyle(dark) {
     if (!libertyBase) await loadLiberty();
     return makeMapStyle(dark);
@@ -3026,6 +3054,7 @@
     const s = JSON.parse(JSON.stringify(libertyBase));
     const name = nameExpr();
     const minz = { poi_r1: 13, poi_r7: 14, poi_r20: 15 };
+    tuneBaseMap(s);
     if (dark) darkify(s);   // recolour first, so the bright place-label colours below stay bright
     s.layers.forEach((l) => {
       const tf = l.layout && l.layout['text-field'];
@@ -3048,6 +3077,10 @@
         'text-anchor': 'top', 'text-offset': [0, 0.75], 'text-max-width': 8, 'symbol-sort-key': ['get', 'rank'] },
       paint: { 'text-color': poiColorExpr(dark), 'text-halo-color': dark ? '#0b1428' : '#ffffff', 'text-halo-width': 1.6 }
     });
+    // house numbers on the buildings when zoomed right in
+    s.layers.push({ id: 'trackly-housenumber', type: 'symbol', source: 'openmaptiles', 'source-layer': 'housenumber', minzoom: 17,
+      layout: { 'text-field': ['get', 'housenumber'], 'text-font': ['Noto Sans Regular'], 'text-size': 10, 'text-padding': 2 },
+      paint: { 'text-color': dark ? '#8b93a3' : '#8a8580', 'text-halo-color': dark ? '#0b1428' : '#ffffff', 'text-halo-width': 1 } });
     s.layers.forEach((l) => { if (POI_LAYERS.includes(l.id)) poiBaseFilters[l.id] = l.filter; });
     styleCache[key] = s;
     return s;
@@ -3257,6 +3290,7 @@
     if (!map.places) map.places = L.layerGroup().addTo(map.m);
     map.places.clearLayers();
     $('#btn-places').classList.toggle('active', places.on);
+    $('#btn-places').setAttribute('aria-checked', String(places.on));
     $('#places-bar').hidden = !places.on || state.tab !== 'map' || !!state.zoneEdit;
     if (!places.on || state.tab === 'history' || state.zoneEdit) return;
     const zoom = map.m.getZoom();
@@ -4124,7 +4158,7 @@
   function renderParked() {
     const tr = state.tracker, on = !!(tr && tr.parked_at);
     $('#park-btn').classList.toggle('on', on);
-    $('#park-btn span').textContent = on ? t('park_btn_on') : t('park_btn');
+    $('#park-btn [data-i18n]').textContent = on ? t('park_btn_on') : t('park_btn');
     $('#parked-chip').hidden = !on;
     if (map.parkCircle) { map.m.removeLayer(map.parkCircle); map.parkCircle = null; }
     if (on && tr.parked_lat != null && state.tab === 'map' && !state.zoneEdit) {
@@ -4549,7 +4583,7 @@
     applyScheme(schemePref(), true);
     applySize(localStorage.getItem('trackly-size'), true);
     // a tiny tap feel on the main buttons (Android)
-    document.addEventListener('click', (e) => { if (navigator.vibrate && e.target.closest('.tab, .fab, .quick-btn, .seg, .switch, .pchip')) navigator.vibrate(8); }, true);
+    document.addEventListener('click', (e) => { if (navigator.vibrate && e.target.closest('.tab, .fab, .ab, .quick-btn, .seg, .switch, .pchip')) navigator.vibrate(8); }, true);
     takeLinkAction();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     // a card / invite link opened while Trackly is already open

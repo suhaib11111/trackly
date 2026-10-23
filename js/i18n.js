@@ -2,6 +2,7 @@
 window.I18N = {
   en: {
     _label: 'EN', _dir: 'ltr',
+    places_on_map: "Places on the map", find_short: "Find", share_short: "Share",
     map_link: "Map link",
     me_title: "You", me_bag: "bag is {d} away", me_park: "Save parking here", me_both: "Show me and bag",
     h_wait: "Waiting for the first location", h_lost: "Lost mode on · tracking live", h_nosignal: "No signal for {t}", h_battery: "Battery low ({n}%) · charge it soon", h_moving: "On the move · {n} km/h", h_safe: "Safe at {z}", h_ok: "All good", undo: "Undo", rem_deleted: "Reminder deleted.", recent_cleared: "Recent searches cleared.", alerts_n: "{n} new alerts", text_size: "Text size", size_normal: "Normal", size_large: "Large", size_xl: "Extra large", jump_bags: "Bags", jump_alerts: "Alerts", jump_activity: "Activity", jump_finder: "Finder tag", jump_look: "Look", jump_security: "Security", jump_family: "Family",
@@ -242,6 +243,7 @@ window.I18N = {
 
   ckb: {
     _label: 'کو', _dir: 'rtl',
+    places_on_map: "شوێنەکان لەسەر نەخشە", find_short: "دۆزینەوە", share_short: "ناردن",
     map_link: "بەستەری نەخشە",
     me_title: "تۆ", me_bag: "جانتاکە {d} دوورە", me_park: "وەستاندن لێرە پاشەکەوت بکە", me_both: "من و جانتاکە پیشان بدە",
     h_wait: "چاوەڕێی یەکەم شوێن", h_lost: "دۆخی ونبوون کارایە · بەدواداچوونی ڕاستەوخۆ", h_nosignal: "بێ سیگناڵ بۆ {t}", h_battery: "پاتری کەمە ({n}%) · زوو شەحنی بکە", h_moving: "لە جووڵەدایە · {n} کم/ک", h_safe: "پارێزراوە لە {z}", h_ok: "هەموو شتێک باشە", undo: "گەڕانەوە", rem_deleted: "بیرخستنەوە سڕایەوە.", recent_cleared: "گەڕانە دوایینەکان سڕانەوە.", alerts_n: "{n} ئاگاداری نوێ", text_size: "قەبارەی نووسین", size_normal: "ئاسایی", size_large: "گەورە", size_xl: "زۆر گەورە", jump_bags: "جانتاکان", jump_alerts: "ئاگادارییەکان", jump_activity: "چالاکی", jump_finder: "تاگی دۆزەرەوە", jump_look: "ڕووکار", jump_security: "ئاسایش", jump_family: "خێزان",
@@ -480,6 +482,7 @@ window.I18N = {
 
   ar: {
     _label: 'ع', _dir: 'rtl',
+    places_on_map: "الأماكن على الخريطة", find_short: "بحث", share_short: "مشاركة",
     map_link: "رابط الخريطة",
     me_title: "أنت", me_bag: "الحقيبة على بعد {d}", me_park: "احفظ مكان الوقوف هنا", me_both: "أظهرني مع الحقيبة",
     h_wait: "بانتظار أول موقع", h_lost: "وضع الفقدان مفعّل · تتبع مباشر", h_nosignal: "لا توجد إشارة منذ {t}", h_battery: "البطارية منخفضة ({n}%) · اشحنها قريباً", h_moving: "في حركة · {n} كم/س", h_safe: "بأمان في {z}", h_ok: "كل شيء على ما يرام", undo: "تراجع", rem_deleted: "تم حذف التذكير.", recent_cleared: "تم مسح عمليات البحث الأخيرة.", alerts_n: "{n} تنبيهات جديدة", text_size: "حجم النص", size_normal: "عادي", size_large: "كبير", size_xl: "كبير جداً", jump_bags: "الحقائب", jump_alerts: "التنبيهات", jump_activity: "النشاط", jump_finder: "بطاقة العثور", jump_look: "المظهر", jump_security: "الأمان", jump_family: "العائلة",
