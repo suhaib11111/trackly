@@ -4,3 +4,5 @@ node_modules/
 
 # private files, never published
 *.zip
+# design reference (React + Tailwind), not part of the app
+design-v2/

@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.23c';
+  const APP_VERSION = '2026.10.28';
 
   // ---------- state ----------
   const state = {
@@ -178,6 +178,8 @@
     $$('.lang-btn').forEach((el) => { el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg><span></span>'; el.querySelector('span').textContent = dict._label; el.setAttribute('aria-label', t('language')); });
     $$('.lang-label').forEach((el) => { el.textContent = dict._label; });
     if ($('#acc-lang')) $('#acc-lang').textContent = { en: 'English', ckb: 'کوردی', ar: 'العربية' }[state.lang];
+    $$('#lang-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.lang === state.lang));
+    if (state.tracker) scheduleHome();
     updateAuthButton();
     state.areaKey = null;
     if (state.tracker) { renderMapPanel(); renderZones(); if (state.tab === 'history') loadHistory(); }
@@ -187,7 +189,7 @@
   const SETTING_KEYS = { theme: 'trackly-theme', lang: 'trackly-lang', mapStyle: 'trackly-map-style', showPath: 'trackly-show-path',
     places: 'trackly-places', cams: 'trackly-cams', camSound: 'trackly-cam-sound', stepsOn: 'trackly-steps-on', weight: 'trackly-weight', height: 'trackly-height', goal: 'trackly-goal',
     finder: 'trackly-finder', voice: 'trackly-voice', traffic: 'trackly-traffic', nightGuard: 'trackly-night-guard', unusual: 'trackly-unusual',
-    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', vibe: 'trackly-vibe', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker' };
+    car: 'trackly-car', reminders: 'trackly-reminders', scheme: 'trackly-scheme', size: 'trackly-size', favs: 'trackly-favs', vibe: 'trackly-vibe', routeMode: 'trackly-route-mode', leftBehind: 'trackly-left-behind', setupDone: 'trackly-setup-done', tracker: 'trackly-tracker', design: 'trackly-design' };
   function currentSettings() {
     const out = {};
     for (const [k, key] of Object.entries(SETTING_KEYS)) { const v = localStorage.getItem(key); if (v !== null) out[k] = v; }
@@ -211,8 +213,10 @@
     const s = (state.user && state.user.user_metadata && state.user.user_metadata.settings) || null;
     settingsLoaded = true;
     if (!s) { syncSettings(); return; }               // first time: store this phone's settings in the account
+    if (s.design !== '2') { s.theme = 'navy'; s.design = '2'; }   // design v2: everyone starts on Navy once (they can pick another)
     for (const [k, key] of Object.entries(SETTING_KEYS)) if (s[k] != null) localStorage.setItem(key, s[k]);
     if (s.theme) applyTheme(s.theme);
+    renderHome();
     if (s.lang && s.lang !== state.lang && LANGS.includes(s.lang)) { state.lang = s.lang; applyLang(); }
     if (s.mapStyle && s.mapStyle !== state.mapStyle && map.m) { state.mapStyle = s.mapStyle; setTiles(); }
     if (s.showPath != null) state.showPath = s.showPath === '1';
@@ -542,6 +546,7 @@
     // white text on photos needs a darker card behind the floating buttons
     map.m.getContainer().classList.toggle('map-photo', st === 'sat' || st === 'hybrid');
     map.m.getContainer().classList.toggle('map-navy', dark && !raster && st !== 'detailed');
+    map.m.getContainer().classList.toggle('map-slate', !dark && !raster && st === 'clean');
     $$('#style-picker [data-style]').forEach((b) => b.classList.toggle('active', b.dataset.style === st));
   }
 
@@ -809,7 +814,7 @@
     const tr = state.trackers.find((x) => x.id === saved) || state.trackers[0];
     $('#tracker-select').value = tr.id;
     await selectTracker(tr.id);
-    switchTab('map');
+    switchTab('home');
   }
 
   async function selectTracker(id) {
@@ -1090,7 +1095,7 @@
   }
 
   // ---------- tabs ----------
-  const TAB_ORDER = ['map', 'history', 'zones', 'account'];
+  const TAB_ORDER = ['home', 'map', 'history', 'account', 'zones'];
   function switchTab(tab) {
     const prev = state.tab;
     const sheet = $('#sheet');
@@ -1127,7 +1132,9 @@
   function doSwitchTab(tab) {
     if (tab !== 'map' && rt.open && !rt.nav) { rt.open = false; rt.seq++; clearRouteLayer(); }
     state.tab = tab;
-    $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+    $('#view-app').dataset.tab = tab;            // design v2: pages (Home, Profile) cover the map
+    $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab || (tab === 'zones' && b.dataset.tab === 'account')));
+    $('#panel-home').hidden = tab !== 'home';
     $('#panel-map').hidden = tab !== 'map' || rt.open;
     $('#panel-route').hidden = tab !== 'map' || !rt.open;
     $('#panel-history').hidden = tab !== 'history';
@@ -1147,8 +1154,9 @@
     if (tab === 'map') { state.followBag = !rt.open; drawZones(false); }
     if (tab === 'zones') renderReminders();
     renderWeather();
-    $('#map-controls').hidden = tab === 'history' || tab === 'account';
-    if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); }
+    $('#map-controls').hidden = tab === 'history' || tab === 'account' || tab === 'home';
+    if (tab === 'account') { renderAlerts(); renderBags(); renderPushSwitch(); renderMfa(); renderAdminLink(); renderProfile(); }
+    if (tab === 'home') renderHome();
     renderPlaces();
     renderMapPanel();
     if (tab !== 'map') { staggerIn($('#panel-' + tab)); $$('.segmented.has-pill').forEach(syncSegPill); r3OnTab(tab); }
@@ -1408,6 +1416,7 @@
   }
 
   function renderZones() {
+    if (state.tab === 'account') setTimeout(renderProfile, 0);
     renderReminders();
     const list = $('#zone-list');
     list.innerHTML = '';
@@ -1997,6 +2006,8 @@
     });
     const avg = vals.reduce((a, b) => a + b, 0) / 7;
     if ($('#week-steps')) $('#week-steps').textContent = avg ? fmtNum(avg) : '—';
+    renderAct2();
+    renderHomeActivity();
   }
 
   // =====================================================================
@@ -3071,6 +3082,8 @@
     else text = t('h_ok');
     el.className = 'bag-health ' + level;
     el.querySelector('span').textContent = text;
+    state.health = { level, text, zone: !!(o && o.inZone) };
+    scheduleHome();
   }
 
   // =====================================================================
@@ -4786,7 +4799,14 @@
       const loc = state.tracker && state.tracker.id === tr.id ? state.recent[0] : null;
       meta.textContent = [loc && typeof loc.battery === 'number' ? t('battery') + ' ' + loc.battery + '%' : '', tr.device_code].filter(Boolean).join(' · ');
       txt.append(nm, meta);
+      dot.innerHTML = dvIcon('bag');
       row.append(dot, txt);
+      if (loc && typeof loc.battery === 'number') {
+        const bt = document.createElement('span'); bt.className = 'bag-batt'; bt.setAttribute('aria-label', t('battery') + ' ' + loc.battery + '%');
+        bt.innerHTML = '<b dir="ltr"></b><i aria-hidden="true"><s></s></i>';
+        bt.querySelector('b').textContent = loc.battery + '%'; bt.querySelector('s').style.width = Math.max(4, loc.battery) + '%';
+        row.appendChild(bt);
+      }
       row.insertAdjacentHTML('beforeend', '<svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>');
 
       const more = document.createElement('div');
@@ -4891,11 +4911,11 @@
   }
 
   // =====================================================================
-  // COLOUR THEMES (Account tab) — Gold is the default
+  // COLOUR THEMES (Profile tab) — Navy is the default (design v2)
   // =====================================================================
-  const THEMES = ['gold', 'mint', 'rose', 'ocean'];
+  const THEMES = ['navy', 'gold', 'mint', 'rose', 'ocean'];
   function applyTheme(name) {
-    const th = THEMES.includes(name) ? name : 'gold';
+    const th = THEMES.includes(name) ? name : 'navy';
     document.documentElement.dataset.theme = th;
     localStorage.setItem('trackly-theme', th);
     syncSettings();
@@ -5353,6 +5373,298 @@
     $('#admin-link').hidden = data !== true;
   }
 
+  // =====================================================================
+  // DESIGN V2 — Home screen, the Activity summary (day / week / month) and the Profile extras.
+  // Everything here only READS what the rest of the app already knows (state.health, state.recent,
+  // dayActivity(), state.zones…), so the tracker, lost mode, sharing and safe zones work exactly as before.
+  // Styles: css/styles.css → "DESIGN V2".
+  // =====================================================================
+  function dvIcon(n) {
+    return ({
+      shield: '<svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M9 12l2 2 4-4"/></svg>',
+      home: '<svg viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+      move: '<svg class="flip-rtl" viewBox="0 0 24 24"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg>',
+      warn: '<svg viewBox="0 0 24 24"><path d="M21.73 18l-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3M12 9v4M12 17h.01"/></svg>',
+      lost: '<svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><path d="M14.12 14.12L16.5 16.5"/></svg>',
+      wait: '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.22-8.56"/></svg>',
+      sun: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
+      moon: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>',
+      bag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><rect width="20" height="14" x="2" y="6" rx="2"/></svg>',
+      up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 7l-8.5 8.5-5-5L2 17M16 7h6v6"/></svg>',
+      down: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 17l-8.5-8.5-5 5L2 7M16 17h6v-6"/></svg>',
+      plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>',
+      zone: '<svg class="zart" viewBox="0 0 120 64" aria-hidden="true"><rect class="za-bg" width="120" height="64" rx="12"/><path class="za-road" d="M0 40 L120 22" stroke-width="4"/><path class="za-road" d="M44 0 L56 64" stroke-width="3"/><circle class="za-ring" cx="60" cy="32" r="22"/><circle class="za-dot" cx="60" cy="32" r="5"/></svg>'
+    })[n] || '';
+  }
+  const dvLocale = () => (state.lang === 'en' ? 'en-GB' : (state.lang === 'ar' ? 'ar-IQ-u-nu-latn' : 'ckb-IQ-u-nu-latn'));
+  const lowerFirst = (s) => (state.lang === 'en' && s ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+  function dvDay(base, off) { const x = new Date(base); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() + off); return x; }
+  // days in a row (up to today) that reached the step goal; today only counts once it's reached
+  function stepStreak() {
+    const goal = stepGoal();
+    let n = 0;
+    for (let i = dayActivity(dayKey(Date.now())).steps >= goal ? 0 : 1; i < 60; i++) {
+      if (dayActivity(dayKey(dvDay(Date.now(), -i))).steps >= goal) n++; else break;
+    }
+    return n;
+  }
+
+  // ---------- Home ----------
+  function scheduleHome() {
+    if (scheduleHome.t) return;
+    scheduleHome.t = requestAnimationFrame(() => { scheduleHome.t = 0; renderHome(); });
+  }
+  function renderHome() {
+    if (!$('#panel-home')) return;
+    // greeting: the name from the account, or the part of the email before the @
+    const email = (state.user && state.user.email) || '';
+    const meta = (state.user && state.user.user_metadata) || {};
+    const raw = String(meta.name || meta.full_name || email.split('@')[0] || '').replace(/[._-]+/g, ' ').replace(/\d+/g, ' ').trim().split(/\s+/)[0] || '';
+    const first = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '';
+    $('#home-avatar').textContent = (first || email || '?').charAt(0).toUpperCase();
+    $('#home-greet').textContent = first ? t('welcome', { n: first }) : t('welcome_plain');
+    // browsers don't know Kurdish month names, so Kurdish uses the app's own date words
+    $('#home-date').textContent = state.lang === 'ckb' ? longDate(new Date()) : new Date().toLocaleDateString(dvLocale(), { weekday: 'short', day: 'numeric', month: 'short' });
+    const dark = isDark(), sch = $('#home-scheme');
+    sch.innerHTML = dvIcon(dark ? 'sun' : 'moon');
+    sch.setAttribute('aria-label', t(dark ? 'to_light' : 'to_dark'));
+    $('#home-bell-dot').hidden = !$('#bell-count') || $('#bell-count').hidden;
+
+    // status card: the same words as the status line on Track
+    const h = state.health || { level: 'wait', text: t('h_wait') };
+    const tr = state.tracker, lost = !!(tr && tr.mode === 'lost');
+    const card = $('#home-status');
+    card.classList.toggle('is-alert', h.level === 'warn' || h.level === 'bad');
+    card.classList.toggle('is-danger', h.level === 'bad');
+    $('#home-status-ic').innerHTML = dvIcon({ ok: h.zone ? 'home' : 'shield', move: 'move', warn: 'warn', bad: 'lost', wait: 'wait' }[h.level] || 'shield');
+    $('#home-status-title').textContent = h.text;
+    const area = ($('#bag-area') && $('#bag-area').textContent.trim()) || '';
+    const dist = (($('#bag-distance') && $('#bag-distance').textContent) || '').replace(/^\s*·\s*/, '').trim();
+    $('#home-status-sub').textContent = [area !== '—' ? area : '', dist].filter(Boolean).join(' · ') || (tr ? (tr.name || tr.device_code) : '—');
+
+    // live map card
+    const chip = $('#mode-chip'), badge = $('#home-badge');
+    badge.textContent = chip ? chip.textContent : '—';
+    badge.classList.toggle('lost', lost);
+    badge.classList.toggle('warn', !lost && h.level === 'warn');
+    $('#home-bag-name').textContent = tr ? (tr.name || tr.device_code) : '—';
+    const loc = state.recent[0], parts = [];
+    if (loc && typeof loc.battery === 'number') parts.push(t('batt_n', { n: loc.battery }));
+    if (loc) parts.push(t('upd_ago', { t: lowerFirst(relTime(ageSeconds(loc))) }));
+    $('#home-bag-meta').textContent = parts.join(' · ') || t('waiting');
+    renderHomeActivity();
+    if (state.tab === 'home') drawHomeMap();
+  }
+
+  // a small, calm map of where the bag is now, with its last hour as a dotted line
+  function drawHomeMap() {
+    const el = $('#home-map');
+    if (!el || !window.L) return;
+    const hm = map.home || (map.home = { m: null, pin: null, path: null, key: '' });
+    if (!hm.m) {
+      hm.m = L.map(el, { zoomControl: false, dragging: false, touchZoom: false, scrollWheelZoom: false, doubleClickZoom: false,
+        boxZoom: false, keyboard: false, tap: false, zoomSnap: 0.25, fadeAnimation: false });
+      hm.m.attributionControl.setPrefix(false);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(hm.m);
+      hm.m.setView([36.1911, 44.0092], 13);
+    }
+    requestAnimationFrame(() => hm.m.invalidateSize());
+    const loc = state.recent[0];
+    if (!loc) return;
+    const lost = !!(state.tracker && state.tracker.mode === 'lost');
+    const icon = L.divIcon({ className: '', html: '<span class="home-pin' + (lost ? ' lost' : '') + '">' + dvIcon('bag') + '</span>', iconSize: [36, 36], iconAnchor: [18, 18] });
+    if (!hm.pin) hm.pin = L.marker([loc.lat, loc.lng], { icon, interactive: false, keyboard: false }).addTo(hm.m);
+    else { hm.pin.setLatLng([loc.lat, loc.lng]); hm.pin.setIcon(icon); }
+    const since = Date.now() - 3600e3;
+    const pts = state.recent.filter((r) => new Date(r.created_at).getTime() > since).map((r) => [r.lat, r.lng]);
+    if (hm.path) hm.m.removeLayer(hm.path);
+    hm.path = pts.length > 1 ? L.polyline(pts, { className: 'home-path', weight: 3, dashArray: '2 8', lineCap: 'round', interactive: false }).addTo(hm.m) : null;
+    const key = loc.lat.toFixed(5) + ',' + loc.lng.toFixed(5);
+    if (key !== hm.key) {
+      hm.key = key;
+      hm.m.setView([loc.lat, loc.lng], 15.5, { animate: false });
+      hm.m.panBy([0, 26], { animate: false });     // a little higher, so the bag isn't under the bottom bar
+    }
+  }
+
+  // steps ring + calories with today's curve (from the phone's step counter, or the bag's walks)
+  function renderHomeActivity() {
+    const ring = $('#home-ring');
+    if (!ring) return;
+    const today = dayActivity(dayKey(Date.now())), yday = dayActivity(dayKey(dvDay(Date.now(), -1))), goal = stepGoal();
+    setStat($('#home-steps-n'), fmtNum(today.steps), true);
+    $('#home-steps-goal').textContent = t('of_n', { n: goal % 1000 ? fmtNum(goal) : (goal / 1000) + 'k' });
+    $('#home-steps').setAttribute('aria-label', t('dv_steps') + ': ' + fmtNum(today.steps) + ' / ' + fmtNum(goal));
+    const len = 2 * Math.PI * 46;
+    ring.style.strokeDasharray = len;
+    ring.style.strokeDashoffset = len * (1 - Math.min(1, today.steps / goal));
+    const d = $('#home-steps-delta');
+    d.textContent = '';
+    if (today.steps && yday.steps) {
+      const pct = Math.round((today.steps - yday.steps) / yday.steps * 100);
+      d.insertAdjacentHTML('afterbegin', dvIcon(pct >= 0 ? 'up' : 'down'));
+      const s = document.createElement('span'), b = document.createElement('b');
+      b.dir = 'ltr'; b.textContent = (pct >= 0 ? '+' : '') + pct + '%';
+      s.append(b, ' ' + t('vs_yday'));
+      d.appendChild(s);
+    } else if (today.steps) d.textContent = t('pct_of_goal', { p: Math.round(today.steps / goal * 100) });
+    setStat($('#home-kcal-n'), fmtNum(today.kcal), true);
+    $('#home-kcal').setAttribute('aria-label', t('dv_kcal') + ': ' + fmtNum(today.kcal) + ' kcal');
+    // the curve: steps added up hour by hour since the morning
+    const nowH = new Date().getHours(), from = Math.min(6, nowH);
+    let sum = 0;
+    const vals = today.hours.slice(from, nowH + 1).map((v) => (sum += v));
+    drawSpark($('#home-spark'), vals.length > 1 ? vals : [0, 0]);
+    $('#home-steps-off').hidden = stepsOn() || today.steps > 0;
+  }
+  // a smooth line (Catmull-Rom curve) with a soft area under it
+  function drawSpark(svg, values) {
+    if (!svg) return;
+    const w = 160, h = 46, pad = 4;
+    const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
+    const pts = values.map((v, i) => [i / (values.length - 1) * w, h - pad - (v - min) / span * (h - pad * 2)]);
+    let line = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6], c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+      line += ' C' + c1.map((n) => n.toFixed(1)).join(' ') + ', ' + c2.map((n) => n.toFixed(1)).join(' ') + ', ' + p2.map((n) => n.toFixed(1)).join(' ');
+    }
+    const end = pts[pts.length - 1];
+    const key = line;
+    if (svg.dataset.key === key) return;
+    const first = !svg.dataset.key;
+    svg.dataset.key = key;
+    svg.innerHTML = '<path class="area" d="' + line + ' L' + w + ' ' + h + ' L0 ' + h + ' Z"/><path class="line" pathLength="1" d="' + line + '"/><circle cx="' + end[0].toFixed(1) + '" cy="' + end[1].toFixed(1) + '" r="3"/>';
+    if (first && !reduceMotion()) { svg.classList.remove('draw'); void svg.getBoundingClientRect(); svg.classList.add('draw'); }
+  }
+
+  // ---------- Activity: day / week / month ----------
+  function renderAct2() {
+    const box = $('#act2');
+    if (!box) return;
+    const [start] = historyRange();
+    const k = dayKey(start), isToday = k === dayKey(Date.now()), goal = stepGoal();
+    const range = state.act2Range || 'day';
+    $$('#act2-range .seg').forEach((b) => { const on = b.dataset.range === range; b.classList.toggle('active', on); b.setAttribute('aria-checked', String(on)); });
+    let bars, labels, cur, curLabel, title, sub, km = 0, mins = 0, kcal = 0, total = 0;
+    const add = (a) => { km += a.km; mins += a.mins; kcal += a.kcal; total += a.steps; };
+    if (range === 'day') {
+      const d = dayActivity(k), nowH = new Date().getHours();
+      let from = 6;
+      const firstH = d.hours.findIndex((v) => v > 0);
+      if (firstH >= 0 && firstH < from) from = firstH;
+      const to = isToday ? Math.max(from + 5, nowH) : 23;
+      bars = d.hours.slice(from, to + 1).map((v) => Math.round(v));
+      labels = bars.map((_, i) => String(from + i).padStart(2, '0'));
+      cur = isToday ? Math.min(bars.length - 1, nowH - from) : Math.max(0, bars.indexOf(Math.max(...bars)));
+      curLabel = isToday ? t('now') : t('busiest');
+      add(d);
+      title = t(isToday ? 'steps_today' : 'steps_day');
+      sub = t('pct_goal', { g: fmtNum(goal), p: Math.round(d.steps / goal * 100) });
+    } else if (range === 'week') {
+      const days = [0, 1, 2, 3, 4, 5, 6].map((i) => dvDay(start, i - 6));
+      const acts = days.map((x) => dayActivity(dayKey(x)));
+      acts.forEach(add);
+      bars = acts.map((a) => a.steps);
+      labels = days.map((x) => (state.lang === 'ckb' ? 'یدسچپهش'[x.getDay()] : x.toLocaleDateString(state.lang === 'en' ? 'en-GB' : 'ar', { weekday: 'narrow' })));
+      cur = 6; curLabel = isToday ? t('act_today') : t('that_day');
+      title = t('steps_week'); sub = t('avg_a_day', { n: fmtNum(total / 7) });
+    } else {
+      const weeks = [3, 2, 1, 0].map((w) => [0, 1, 2, 3, 4, 5, 6].map((i) => dayActivity(dayKey(dvDay(start, -w * 7 - 6 + i)))));
+      weeks.forEach((ws) => ws.forEach(add));
+      bars = weeks.map((ws) => ws.reduce((s, a) => s + a.steps, 0));
+      labels = [3, 2, 1, 0].map((w) => { const x = dvDay(start, -w * 7 - 6); return x.getDate() + '/' + (x.getMonth() + 1); });
+      cur = 3; curLabel = t('this_wk');
+      title = t('steps_month'); sub = t('avg_a_day', { n: fmtNum(total / 28) });
+    }
+    $('#act2-title').textContent = title;
+    setStat($('#act2-n'), fmtNum(total), true);
+    $('#act2-sub').textContent = sub;
+    $('#act2-cur-label').textContent = curLabel;
+    $('#act2-km').textContent = km ? (Math.round(km * 10) / 10).toLocaleString('en-US') : '—';
+    $('#act2-min').textContent = mins ? fmtNum(mins) : '—';
+    $('#act2-kcal').textContent = kcal ? fmtNum(kcal) : '—';
+    $('#act2-chart').setAttribute('aria-label', title + ': ' + fmtNum(total) + ' · ' + curLabel + ': ' + fmtNum(bars[cur] || 0));
+
+    // the bar chart: the current one in the strong colour (and labelled), the others soft; dashed line = average
+    const wrap = $('#act2-bars'), max = Math.max(1, ...bars), avg = bars.reduce((a, b) => a + b, 0) / bars.length;
+    const every = bars.length > 12 ? 3 : 1, key = range + k + bars.join(',');
+    if (wrap.dataset.key === key) { renderGoal(goal); return; }
+    const animate = wrap.dataset.view !== range + k && !reduceMotion();
+    wrap.dataset.key = key; wrap.dataset.view = range + k;
+    wrap.innerHTML = '';
+    const line = document.createElement('span');
+    line.className = 'act2-avg';
+    line.style.bottom = 'calc(20px + ' + (avg / max * (160 - 24 - 20)).toFixed(1) + 'px)';
+    if (avg > 0) wrap.appendChild(line);
+    bars.forEach((v, i) => {
+      const col = document.createElement('div');
+      col.className = 'act2-col' + (i === cur ? ' cur' : '');
+      const bw = document.createElement('div'); bw.className = 'bwrap';
+      const bar = document.createElement('i');
+      const pct = v ? Math.max(6, v / max * 100) : 3;
+      bar.style.height = pct + '%';
+      bar.style.transitionDelay = (i * 30) + 'ms';
+      bw.appendChild(bar);
+      if (i === cur && v) { const em = document.createElement('em'); em.dir = 'ltr'; em.textContent = v >= 10000 ? Math.round(v / 1000) + 'k' : fmtNum(v); em.style.bottom = 'calc(' + pct + '% + 4px)'; bw.appendChild(em); }
+      const lb = document.createElement('b'); lb.textContent = (i % every === 0 || i === cur) ? labels[i] : '';
+      col.append(bw, lb);
+      wrap.appendChild(col);
+    });
+    if (animate) { wrap.classList.add('grow'); void wrap.offsetWidth; requestAnimationFrame(() => wrap.classList.remove('grow')); }
+    renderGoal(goal);
+  }
+  function renderGoal(goal) {
+    const td = dayActivity(dayKey(Date.now())), pct = Math.min(100, Math.round(td.steps / goal * 100));
+    $('#act2-goal').textContent = fmtNum(goal);
+    $('#act2-prog-fill').style.width = pct + '%';
+    $('#act2-prog').setAttribute('aria-valuenow', String(pct));
+    const togo = $('#act2-togo');
+    togo.textContent = '';
+    if (td.steps >= goal) togo.textContent = t('goal_hit');
+    else { const b = document.createElement('b'); b.textContent = fmtNum(goal - td.steps); const [a, c] = t('to_go', { n: '\u0000' }).split('\u0000'); togo.append(a, b, c || ''); }
+    const st = stepStreak();
+    $('#act2-streak').textContent = st ? t('streak_n', { n: st }) : '';
+  }
+
+  // ---------- Profile ----------
+  function renderProfile() {
+    const u = state.user || {};
+    $('#acc-since').textContent = t('member_since', { y: u.created_at ? new Date(u.created_at).getFullYear() : new Date().getFullYear() });
+    const n = state.trackers.length;
+    $('#acc-st-trackers').textContent = String(n);
+    $('#acc-st-tr-label').textContent = t(n === 1 ? 'st_tracker' : 'st_trackers');
+    $('#acc-st-zones').textContent = String(state.zones.length);
+    $('#acc-st-streak').textContent = String(stepStreak());
+    renderZoneCards();
+    $$('#lang-seg .seg').forEach((b) => b.classList.toggle('active', b.dataset.lang === state.lang));
+  }
+  function renderZoneCards() {
+    const box = $('#acc-zone-cards');
+    if (!box) return;
+    box.innerHTML = '';
+    state.zones.slice(0, 6).forEach((z) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'zone-card dv-card'; b.dataset.action = 'open-zone'; b.dataset.id = z.id;
+      b.innerHTML = dvIcon('zone');
+      const nm = document.createElement('strong'); nm.textContent = z.name;
+      const r = document.createElement('span'); r.textContent = t('zone_radius', { n: fmtDistance(z.radius_m) });
+      b.append(nm, r);
+      box.appendChild(b);
+    });
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'zone-card add'; add.dataset.action = 'add-zone-card';
+    add.innerHTML = dvIcon('plus');
+    const sp = document.createElement('span'); sp.textContent = t('add_zone');
+    add.appendChild(sp);
+    box.appendChild(add);
+  }
+  // the zone screen needs the map: open it, then the editor
+  function openZoneFromProfile(z) {
+    switchTab('zones');
+    setTimeout(() => { if (state.tab === 'zones' && !state.zoneEdit) startZoneEdit(z || undefined); }, 420);
+  }
+
   // ---------- events ----------
   function bindEvents() {
     document.addEventListener('click', async (e) => {
@@ -5372,7 +5684,13 @@
       else if (a === 'find-nearby') openFind();
       else if (a === 'close-find') closeFind();
       else if (a === 'find-compass') startCompass(true);
-      else if (a === 'find-sound') requestBuzz();
+      else if (a === 'find-sound') { requestBuzz(); if (el.classList.contains('btn')) { el.classList.add('ringing'); setTimeout(() => el.classList.remove('ringing'), 3000); } }
+      else if (a === 'go-tab') switchTab(el.dataset.target);
+      else if (a === 'home-scheme') revealChange(e, () => { applyScheme(isDark() ? 'light' : 'dark'); renderHome(); });
+      else if (a === 'act-range') { state.act2Range = el.dataset.range; renderAct2(); }
+      else if (a === 'edit-goal') { switchTab('account'); setTimeout(() => accJump('acc-activity'), 380); }
+      else if (a === 'open-zone') openZoneFromProfile(state.zones.find((x) => String(x.id) === el.dataset.id));
+      else if (a === 'add-zone-card') openZoneFromProfile(null);
       else if (a === 'toggle-places') togglePlaces();
       else if (a === 'open-search') openSearch();
       else if (a === 'toggle-pw') {

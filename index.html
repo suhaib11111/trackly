@@ -1,16 +1,17 @@
 <!doctype html>
-<html lang="en" dir="ltr">
+<html lang="en" dir="ltr" data-theme="navy">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#0B0F14" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#F3F5F7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1E293B" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#F1F5F9" media="(prefers-color-scheme: light)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Trackly">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Trackly</title>
-  <script>try { var s = localStorage.getItem('trackly-scheme'), th = localStorage.getItem('trackly-theme'), sz = localStorage.getItem('trackly-size'); if (sz === 'large' || sz === 'xl') document.documentElement.dataset.size = sz; if (s === 'light' || s === 'dark') document.documentElement.dataset.scheme = s; if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
+  <!-- before the page draws: light/dark, colour theme and text size, so there's no flash. The new design (v2) starts everyone on Navy once. -->
+  <script>try { var s = localStorage.getItem('trackly-scheme'), th = localStorage.getItem('trackly-theme'), sz = localStorage.getItem('trackly-size'); if (localStorage.getItem('trackly-design') !== '2') { th = 'navy'; localStorage.setItem('trackly-theme', th); localStorage.setItem('trackly-design', '2'); } if (sz === 'large' || sz === 'xl') document.documentElement.dataset.size = sz; if (s === 'light' || s === 'dark') document.documentElement.dataset.scheme = s; if (th) document.documentElement.dataset.theme = th; } catch (e) {}</script>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -19,7 +20,7 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
   <link rel="stylesheet" href="css/styles.css">
@@ -224,7 +225,45 @@
       <div id="ptr" class="ptr" aria-hidden="true"><span class="ptr-spin"></span></div>
       <button id="sheet-handle" class="handle-btn" type="button" aria-expanded="true" data-i18n-aria="toggle_card" aria-label="Show more or less"><span class="handle"></span></button>
 
-      <!-- Map tab -->
+      <!-- Home tab (design v2): status, a small live map, steps and calories. Every card opens the screen with more. -->
+      <div id="panel-home" class="panel home-panel" hidden>
+        <header class="home-head">
+          <svg class="home-curve" viewBox="0 0 400 360" preserveAspectRatio="none" aria-hidden="true"><path class="hc-fill" d="M0 0H400V270C320 340 150 280 0 352Z"/><path class="hc-line" d="M400 270C320 340 150 280 0 352"/></svg>
+          <div class="home-top">
+            <span id="home-avatar" class="home-avatar" aria-hidden="true">?</span>
+            <div class="home-hello"><p id="home-greet">—</p><p id="home-date" class="home-date"></p></div>
+            <button id="home-scheme" class="dv-icon dv-quiet" type="button" data-action="home-scheme" data-i18n-aria="appearance" aria-label="Appearance"></button>
+            <button class="dv-icon" type="button" data-action="open-alerts" data-i18n-aria="alerts" aria-label="Alerts"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.27 21a2 2 0 0 0 3.46 0M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/></svg><span id="home-bell-dot" class="dv-dot" hidden></span></button>
+          </div>
+          <button id="home-status" class="home-status dv-card" type="button" data-action="go-tab" data-target="map" aria-live="polite">
+            <span id="home-status-ic" class="hs-ic" aria-hidden="true"></span>
+            <span class="hs-txt"><span class="dv-label" data-i18n="bag_status">Bag status</span><strong id="home-status-title">—</strong><span id="home-status-sub">—</span></span>
+            <svg class="hs-chev flip-rtl" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </header>
+        <div class="home-grid">
+          <button id="home-map-card" class="home-map dv-card" type="button" data-action="go-tab" data-target="map" data-i18n-aria="open_map" aria-label="Open the live map">
+            <span id="home-map" class="home-map-view" aria-hidden="true"></span>
+            <span class="home-map-top"><span class="dv-chip dv-float" data-i18n="live_map">Live map</span><span id="home-badge" class="dv-badge">—</span></span>
+            <span class="home-map-bottom dv-float"><span class="hm-txt"><strong id="home-bag-name">—</strong><span id="home-bag-meta">—</span></span><span class="hm-go" aria-hidden="true"><svg class="flip-rtl" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></span></span>
+          </button>
+          <button id="home-steps" class="home-steps dv-card" type="button" data-action="go-tab" data-target="history">
+            <span class="dv-label" data-i18n="dv_steps">Steps</span>
+            <span class="hst-ring"><svg viewBox="0 0 110 110" aria-hidden="true"><circle class="hr-bg" cx="55" cy="55" r="46"/><circle id="home-ring" class="hr-fg" cx="55" cy="55" r="46"/></svg>
+              <span class="hst-num"><strong id="home-steps-n">0</strong><span id="home-steps-goal"></span></span></span>
+            <span id="home-steps-delta" class="hst-delta"></span>
+          </button>
+          <button id="home-kcal" class="home-kcal dv-card" type="button" data-action="go-tab" data-target="history">
+            <span class="dv-row"><span class="dv-label" data-i18n="dv_kcal">Calories</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span>
+            <span class="hk-num"><strong id="home-kcal-n">0</strong><span>kcal</span></span>
+            <span class="hk-sub" data-i18n="act_today">Today</span>
+            <svg id="home-spark" class="hk-spark" viewBox="0 0 160 46" aria-hidden="true"></svg>
+          </button>
+        </div>
+        <div id="home-steps-off" class="home-note dv-card" hidden><span data-i18n="home_steps_off">Step counting is off. Turn it on to see your steps here.</span><button class="btn btn-primary" type="button" data-action="toggle-steps" data-i18n="home_turn_on">Turn on</button></div>
+      </div>
+
+      <!-- Map tab (Track) -->
       <div id="panel-map" class="panel">
         <div class="bag-info">
         <div class="bag-head">
@@ -244,11 +283,14 @@
         </div>
 
         <div id="normal-actions" class="normal-actions">
+          <!-- design v2: the two main actions as big buttons, the rest as round buttons below -->
+          <div class="dv-main-acts">
+            <button class="btn btn-primary" type="button" data-action="find-sound"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.27 21a2 2 0 0 0 3.46 0M22 8c0-2.3-.8-4.3-2-6M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33M4 2C2.8 3.7 2 5.7 2 8"/></svg><span data-i18n="ring_bag">Ring bag</span></button>
+            <button class="btn btn-secondary" type="button" data-action="share-live" data-hours="4"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.59 13.51l6.83 3.98M15.41 6.51l-6.82 3.98"/></svg><span data-i18n="share_live">Share location</span></button>
+          </div>
           <div class="act-row" role="toolbar">
             <button class="ab ab-primary" type="button" data-action="directions" data-i18n-aria="directions" aria-label="Directions"><span class="ab-ic"><svg class="flip-rtl" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg></span><span data-i18n="directions">Directions</span></button>
-            <button class="ab" type="button" data-action="find-sound"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></span><span data-i18n="beep">Beep</span></button>
             <button class="ab" type="button" data-action="find-nearby"><span class="ab-ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg></span><span data-i18n="find_short">Find</span></button>
-            <button class="ab" type="button" data-action="share-live" data-hours="4"><span class="ab-ic"><svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.4M8.2 13.2l7.6 4.4"/></svg></span><span data-i18n="share_short">Share</span></button>
             <button class="ab" type="button" id="park-btn" data-action="park"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 1 6 6v4l2 3H4l2-3V9a6 6 0 0 1 6-6zM10 19a2 2 0 0 0 4 0"/></svg></span><span data-i18n="park_btn">Park</span></button>
             <button class="ab" type="button" data-action="car"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M5 16V11l2-5h10l2 5v5M3 16h18v3h-3v-1H6v1H3zM7.5 13.5h.01M16.5 13.5h.01"/></svg></span><span data-i18n="car_btn">My car</span></button>
             <button class="ab" type="button" data-action="report"><span class="ab-ic"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/></svg></span><span data-i18n="report_btn">Report</span></button>
@@ -299,9 +341,9 @@
 
       <!-- History tab -->
       <div id="panel-history" class="panel r2-panel" hidden>
-        <div class="r3-bar" aria-hidden="true"><strong data-i18n="journey">Journey</strong></div>
+        <div class="r3-bar" aria-hidden="true"><strong data-i18n="dv_activity">Activity</strong></div>
         <div class="r2-head r3-head-row">
-          <div class="r3-titles"><h2 class="r2-title" data-i18n="journey">Journey</h2><p id="hist-day" class="r2-sub">—</p></div>
+          <div class="r3-titles"><span class="dv-label" data-i18n="fitness">Fitness</span><h2 class="r2-title" data-i18n="dv_activity">Activity</h2><p id="hist-day" class="r2-sub">—</p></div>
           <div class="r3-head-btns">
             <button id="hist-share" class="icon-btn r3-hbtn" type="button" data-action="share-day" data-i18n-aria="share_day" aria-label="Share my day"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 14v6h14v-6"/></svg></button>
             <button id="hist-cal" class="icon-btn r3-hbtn" type="button" data-action="open-cal" data-i18n-aria="calendar" aria-label="Calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg></button>
@@ -312,6 +354,33 @@
           <button type="button" class="chip" data-day="1" data-i18n="yesterday">Yesterday</button>
           <label class="chip chip-date"><span data-i18n="pick_date">Pick date</span><input type="date" id="history-date"></label>
         </div>
+        <!-- design v2: steps for the day / week / month, from the phone's step counter and the bag's walks -->
+        <section id="act2" class="act2">
+          <div id="act2-range" class="segmented" role="radiogroup" data-i18n-aria="act_range" aria-label="Time range">
+            <button type="button" class="seg active" role="radio" aria-checked="true" data-action="act-range" data-range="day" data-i18n="r_day">Day</button>
+            <button type="button" class="seg" role="radio" aria-checked="false" data-action="act-range" data-range="week" data-i18n="r_week">Week</button>
+            <button type="button" class="seg" role="radio" aria-checked="false" data-action="act-range" data-range="month" data-i18n="r_month">Month</button>
+          </div>
+          <div class="act2-total"><span id="act2-title" class="dv-label">—</span><strong id="act2-n">0</strong><p id="act2-sub"></p></div>
+          <div id="act2-chart" class="act2-chart dv-card" role="img">
+            <div class="act2-legend"><span><i class="lg-cur" aria-hidden="true"></i><span id="act2-cur-label">—</span></span><span><i class="lg-avg" aria-hidden="true"></i><span data-i18n="average">Average</span></span></div>
+            <div id="act2-bars" class="act2-bars"></div>
+          </div>
+          <div class="act2-stats">
+            <div class="act2-stat dv-card"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg><strong id="act2-km">—</strong><span data-i18n="dv_km">Kilometres</span></div>
+            <div class="act2-stat dv-card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 2h4M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg><strong id="act2-min">—</strong><span data-i18n="dv_min">Active min</span></div>
+            <div class="act2-stat dv-card"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.07-2.14-.22-4.05 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.15.43-2.29 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg><strong id="act2-kcal">—</strong><span data-i18n="dv_kcal">Calories</span></div>
+          </div>
+          <div class="act2-goal dv-card">
+            <div class="dv-row"><span class="dv-label" data-i18n="daily_goal">Daily goal</span><button class="btn btn-secondary act2-edit" type="button" data-action="edit-goal"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.17 6.81a1 1 0 0 0-3.98-3.98L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5zM15 5l4 4"/></svg><span data-i18n="edit">Edit</span></button></div>
+            <div class="act2-goal-n"><strong id="act2-goal">—</strong><span data-i18n="steps_word">steps</span></div>
+            <div class="act2-track" id="act2-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-aria="daily_goal" aria-label="Daily goal"><i id="act2-prog-fill"></i></div>
+            <div class="dv-row act2-goal-foot"><span id="act2-togo"></span><span id="act2-streak"></span></div>
+          </div>
+          <p id="act-src" class="muted tiny"></p>
+          <button id="act-resume" class="btn btn-secondary" type="button" data-action="steps-resume" hidden data-i18n="act_resume">Tap to keep counting steps</button>
+        </section>
+        <h3 class="dv-label dv-section" data-i18n="journey">Journey</h3>
         <div class="stats hist-stats">
           <div class="stat"><span class="stat-label" data-i18n="hist_dist">Distance</span><span id="hist-km" class="stat-value">—</span><span id="hist-trend" class="stat-sub r3-trend" hidden></span></div>
           <div class="stat"><span class="stat-label" data-i18n="hist_stops">Stops</span><span id="hist-stops" class="stat-value">—</span></div>
@@ -353,8 +422,6 @@
           </div>
           <div id="act-hours" class="act-hours" hidden><div class="act-hhead"><span class="label" data-i18n="act_hours">When you walked</span><span class="act-hpeak muted tiny"></span></div><div class="act-hbars" aria-hidden="true"></div><div class="act-hscale" aria-hidden="true"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div></div>
           <div id="act-week" class="act-week" aria-hidden="true"></div>
-          <p id="act-src" class="muted tiny"></p>
-          <button id="act-resume" class="btn btn-secondary" type="button" data-action="steps-resume" hidden data-i18n="act_resume">Tap to keep counting steps</button>
         </div>
         <div id="week-card" class="week-card" hidden>
           <span class="label" data-i18n="week_title">Last 7 days</span>
@@ -374,7 +441,7 @@
       <!-- Safe zones tab -->
       <div id="panel-zones" class="panel r2-panel" hidden>
         <div class="r3-bar" aria-hidden="true"><strong data-i18n="safe_zones">Safe zones</strong></div>
-        <div class="r2-head"><h2 class="r2-title" data-i18n="safe_zones">Safe zones</h2><p id="zones-health" class="bag-health" hidden><i aria-hidden="true"></i><span></span></p></div>
+        <div class="r2-head"><button class="icon-btn zones-back" type="button" data-action="go-tab" data-target="account" data-i18n-aria="back_profile" aria-label="Back to Profile"><svg class="flip-rtl" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button><h2 class="r2-title" data-i18n="safe_zones">Safe zones</h2><p id="zones-health" class="bag-health" hidden><i aria-hidden="true"></i><span></span></p></div>
         <p class="muted small" data-i18n="zones_sub">Choose your own places. We’ll notify you when your bag leaves one of them.</p>
         <div id="zone-suggest" class="r3-suggest" hidden>
           <span id="zs-ic" class="zone-icon"></span>
@@ -428,20 +495,33 @@
 
       <!-- Account tab -->
       <div id="panel-account" class="panel r2-panel" hidden>
-        <div class="r3-bar" aria-hidden="true"><strong data-i18n="account">Account</strong></div>
-        <div class="r2-head"><h2 class="r2-title" data-i18n="account">Account</h2></div>
+        <div class="r3-bar" aria-hidden="true"><strong data-i18n="dv_profile">Profile</strong></div>
+        <div class="r2-head"><span class="dv-label" data-i18n="account">Account</span><h2 class="r2-title" data-i18n="dv_profile">Profile</h2></div>
         <div class="acc-profile">
-          <span id="acc-avatar" class="acc-avatar" aria-hidden="true">?</span>
-          <div class="acc-txt"><strong id="account-email"></strong><span id="acc-bagcount"></span></div>
+          <div class="acc-id">
+            <span id="acc-avatar" class="acc-avatar" aria-hidden="true">?</span>
+            <div class="acc-txt"><strong id="account-email"></strong><span id="acc-since"></span><span id="acc-bagcount" hidden></span></div>
+          </div>
+          <dl class="acc-stats">
+            <div><dt id="acc-st-tr-label" data-i18n="st_trackers">Trackers</dt><dd id="acc-st-trackers">0</dd></div>
+            <div><dt data-i18n="st_zones">Safe zones</dt><dd id="acc-st-zones">0</dd></div>
+            <div><dt data-i18n="st_streak">Day streak</dt><dd id="acc-st-streak">0</dd></div>
+          </dl>
         </div>
-        <div class="acc-jump" role="navigation"><button type="button" class="chip" data-action="acc-jump" data-target="acc-bags" data-i18n="jump_bags">Bags</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-alerts" data-i18n="jump_alerts">Alerts</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-activity" data-i18n="jump_activity">Activity</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-finder" data-i18n="jump_finder">Finder tag</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-look" data-i18n="jump_look">Look</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-security" data-i18n="jump_security">Security</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-family" data-i18n="jump_family">Family</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-app" data-i18n="jump_app">App</button></div>
+        <div class="acc-jump" role="navigation"><button type="button" class="chip" data-action="acc-jump" data-target="acc-bags" data-i18n="jump_bags">Bags</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-zones" data-i18n="safe_zones">Safe zones</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-alerts" data-i18n="jump_alerts">Alerts</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-activity" data-i18n="jump_activity">Activity</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-finder" data-i18n="jump_finder">Finder tag</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-look" data-i18n="jump_look">Look</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-security" data-i18n="jump_security">Security</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-family" data-i18n="jump_family">Family</button><button type="button" class="chip" data-action="acc-jump" data-target="acc-app" data-i18n="jump_app">App</button></div>
 
         <section id="acc-bags" class="acc-group">
-          <h3 class="acc-gtitle" data-i18n="your_bags">Your bags</h3>
+          <h3 class="acc-gtitle" data-i18n="my_trackers">My trackers</h3>
           <div class="acc-card">
             <ul id="bag-list" class="bag-list"></ul>
             <button class="acc-item acc-link" type="button" data-action="add-tracker"><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span><span class="acc-txt"><strong data-i18n="add_tracker">Pair another tracker</strong></span><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
           </div>
+        </section>
+
+        <!-- design v2: safe zones as cards; Edit opens the full Safe zones screen (with the map) -->
+        <section id="acc-zones" class="acc-group">
+          <div class="acc-gtitle-row"><h3 class="acc-gtitle" data-i18n="safe_zones">Safe zones</h3><button class="link-btn" type="button" data-action="go-tab" data-target="zones" data-i18n="edit">Edit</button></div>
+          <div id="acc-zone-cards" class="zone-cards"></div>
         </section>
 
         <section class="acc-group">
@@ -513,12 +593,18 @@
               </div></div></div>
             <div class="acc-item acc-stack"><span class="acc-ic" style="--c:#EC4899"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 0 0 0 18c1.5 0 2-1 2-2s-1-1.5-1-2.5 1-1.5 2-1.5h2a4 4 0 0 0 4-4c0-4.4-4-8-9-8zM7.5 11h.01M10 7h.01M14.5 7h.01"/></svg></span><div class="acc-txt"><strong data-i18n="theme">Colour theme</strong>
               <div id="theme-list" class="theme-list">
+                <button type="button" class="theme-opt" data-action="theme" data-theme-pick="navy"><span class="tsw tsw-navy"></span><span data-i18n="theme_navy">Navy</span></button>
                 <button type="button" class="theme-opt" data-action="theme" data-theme-pick="gold"><span class="tsw tsw-gold"></span><span data-i18n="theme_gold">Gold</span></button>
                 <button type="button" class="theme-opt" data-action="theme" data-theme-pick="mint"><span class="tsw tsw-mint"></span><span data-i18n="theme_mint">Mint</span></button>
                 <button type="button" class="theme-opt" data-action="theme" data-theme-pick="rose"><span class="tsw tsw-rose"></span><span data-i18n="theme_rose">Rose</span></button>
                 <button type="button" class="theme-opt" data-action="theme" data-theme-pick="ocean"><span class="tsw tsw-ocean"></span><span data-i18n="theme_ocean">Ocean</span></button>
               </div></div></div>
-            <button class="acc-item acc-link" type="button" data-action="lang"><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg></span><span class="acc-txt"><strong data-i18n="language">Language</strong></span><strong id="acc-lang" class="acc-val">English</strong><svg class="acc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+            <div class="acc-item acc-stack"><span class="acc-ic" style="--c:#3B82F6"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z"/></svg></span><div class="acc-txt"><strong data-i18n="language">Language</strong>
+              <div id="lang-seg" class="segmented small">
+                <button type="button" class="seg" data-action="pick-lang" data-lang="en">English</button>
+                <button type="button" class="seg" data-action="pick-lang" data-lang="ckb">کوردی</button>
+                <button type="button" class="seg" data-action="pick-lang" data-lang="ar">العربية</button>
+              </div></div></div>
           </div>
         </section>
 
@@ -569,21 +655,22 @@
 
     <nav class="tabbar" id="tabbar">
       <span class="tab-ink" aria-hidden="true"></span>
+      <!-- design v2: Home · Track · Activity · Profile (Safe zones open from Profile) -->
+      <button type="button" class="tab" data-tab="home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+        <span data-i18n="dv_tab_home">Home</span>
+      </button>
       <button type="button" class="tab active" data-tab="map">
-        <svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
-        <span data-i18n="tab_map">Map</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+        <span data-i18n="dv_tab_track">Track</span>
       </button>
       <button type="button" class="tab" data-tab="history">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        <span data-i18n="tab_history">History</span>
-      </button>
-      <button type="button" class="tab" data-tab="zones">
-        <svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/></svg>
-        <span data-i18n="tab_zones">Safe zones</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0zM20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0zM16 17h4M4 13h4"/></svg>
+        <span data-i18n="dv_tab_activity">Activity</span>
       </button>
       <button type="button" class="tab" data-tab="account">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
-        <span data-i18n="tab_account">Account</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span data-i18n="dv_tab_profile">Profile</span>
       </button>
     </nav>
 
