@@ -1998,3 +1998,138 @@ html[data-size="xl"] .act2-stat span, html[data-size="xl"] .act2-col b { font-si
 :root[data-theme="navy"] .map-navy::after { background: #1E293B; opacity: 0.6; }
 .map-slate { position: relative; }
 :root[data-theme="navy"] .map-slate::after { content: ""; position: absolute; inset: 0; z-index: 250; pointer-events: none; background: #475569; mix-blend-mode: color; opacity: 0.28; }
+
+/* =====================================================================
+   DESIGN V2 — round 2: the screens now follow the design layout
+   Track: top bar (back · bag name · ···), "Bag status" card, journey line, quiet Lost mode
+   Activity: a full page (the route opens on the map from "See on map")
+   Profile: grey icons, dashed "add" button, settings button; tab bar closer to the bottom
+   ===================================================================== */
+
+/* tab bar: as low as the phone allows (was 14px + the home-bar area: too much empty space under it) */
+:root { --nav-gap: max(12px, calc(var(--safe-bottom) - 12px)); }
+.tabbar { padding-bottom: var(--nav-gap); }
+.tabbar::before { bottom: var(--nav-gap); }
+
+/* ---------- top bar ---------- */
+.dv-topbar { position: absolute; z-index: 520; left: 16px; right: 16px; top: calc(14px + var(--safe-top)); display: none; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }
+.dv-topbar > * { pointer-events: auto; }
+#view-app:is([data-tab="map"], [data-tab="zones"], .hist-map) .dv-topbar { display: flex; }
+#view-app:is([data-tab="map"], [data-tab="zones"], .hist-map) .topbar { display: none; }
+#view-app:has(#sheet.editing) .dv-topbar, #view-app:has(#sheet.editing) .dv-more { display: none !important; }
+.dv-title { min-width: 0; max-width: calc(100% - 136px); height: 40px; padding: 0 16px; border-radius: 999px; display: inline-flex; align-items: center; box-shadow: var(--shadow-sm); color: var(--text); }
+.dv-title .bag-name-row #bag-name { font-size: 13px; font-weight: 600; letter-spacing: 0; line-height: 40px; }
+.dv-title .bag-chevron { width: 16px; height: 16px; stroke-width: 2; }
+.dv-title-txt { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#view-app:not([data-tab="map"]) .dv-title .bag-name-row { display: none; }
+#view-app:not([data-tab="map"]) #dv-more-btn { visibility: hidden; }
+#dv-more-btn[aria-expanded="true"] { background: var(--primary); color: var(--on-primary); border-color: transparent; }
+#dv-more-btn .dv-dot { background: var(--danger); }
+/* Safe zones: the top bar has the back button now */
+#view-app[data-tab="zones"] .zones-back { display: none; }
+
+/* on Track the map is clean: search, map buttons, places and weather moved into ··· */
+#view-app[data-tab="map"] #map-controls { display: none; }
+#view-app[data-tab="map"]:not(.dv-places) :is(#places-bar, #places-hint) { display: none !important; }
+#view-app:is([data-tab="map"], .hist-map) #wx-pill { display: none !important; }
+#view-app[data-tab="map"] .style-picker { top: calc(70px + var(--safe-top)); bottom: auto; right: 16px; }
+html[dir="rtl"] #view-app[data-tab="map"] .style-picker { right: auto; left: 16px; }
+
+/* ---------- the ··· menu ---------- */
+.dv-more { position: absolute; z-index: 720; top: calc(70px + var(--safe-top)); inset-inline-end: 16px; width: min(264px, calc(100% - 32px));
+  max-height: calc(100% - 180px - var(--safe-top)); overflow-y: auto; padding: 6px; border-radius: 20px;
+  background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+  display: flex; flex-direction: column; transform-origin: top right; animation: dv-pop 0.18s var(--dv-ease) both; }
+html[dir="rtl"] .dv-more { transform-origin: top left; }
+.dv-more[hidden] { display: none; }
+.dv-more button { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px; border: none; border-radius: 14px; background: none;
+  color: var(--text); font: inherit; font-size: 15px; font-weight: 500; text-align: start; cursor: pointer; }
+.dv-more button[hidden] { display: none; }
+.dv-more button:hover, .dv-more button:active, .dv-more button:focus-visible { background: color-mix(in srgb, var(--text) 6%, transparent); }
+.dv-more button svg { width: 20px; height: 20px; color: var(--muted); stroke-width: 1.75; }
+.dv-more button b { margin-inline-start: auto; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.dv-more [aria-checked="true"]::after { content: ""; margin-inline-start: auto; width: 8px; height: 8px; border-radius: 50%; background: var(--text); }
+.dv-more hr { border: 0; border-top: 1px solid var(--line); margin: 6px 8px; }
+@keyframes dv-pop { from { opacity: 0; transform: scale(0.96) translateY(-4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .dv-more { animation: none; } }
+
+/* ---------- Track card: Bag status ---------- */
+#panel-map > #normal-actions { order: 1; }
+#panel-map > :is(#silent-note, #lost-actions, #hold-lost, #hold-help, #lost-report) { order: 2; }
+#panel-map .bag-head .pill-dot { display: none; }
+#panel-map .bag-head { align-items: flex-start; gap: 16px; }
+.dv-sheet-title { margin: 0; font-size: 28px; font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; color: var(--text); }
+html[dir="rtl"] .dv-sheet-title { letter-spacing: 0; }
+#panel-map #bag-health { margin-top: 4px; font-size: 14px; color: var(--text-2); }
+#panel-map #bag-health:is(.ok, .wait, .move) i { display: none; }
+#panel-map .bag-info .bag-where, #panel-map .bag-info .near { padding-inline-start: 0; }
+#panel-map .chip-status:not(.lost) { display: inline-flex; }
+#panel-map #mode-chip { margin-top: 4px; flex: none; }
+#panel-map .stat-ic { width: 16px; height: 16px; flex: none; color: var(--muted); stroke-width: 1.75; }
+#panel-map .stat-upd { order: -1; }
+#panel-map .stat-upd :is(.stat-label, .stat-value) { color: var(--text); font-weight: 600; }
+#normal-actions .act-row { display: none; }
+#normal-actions { margin-top: 4px; }
+.dv-main-acts { margin-bottom: 0; }
+.dv-main-acts .btn { min-height: 56px; }
+/* Lost mode: a quiet text button (still press-and-hold, so it never happens by accident) */
+#hold-lost.hold-soft { width: fit-content; min-height: 48px; margin: -4px auto 0; padding: 0 16px; border: none; border-radius: 16px; background: transparent;
+  color: var(--text-2); font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 8px; }
+#hold-lost .hold-ic { position: relative; width: 16px; height: 16px; stroke-width: 1.75; }
+#hold-lost.holding .hold-ic { color: #fff; }
+#hold-help { margin-top: -10px; }
+
+/* ---------- journey line (today: the place it left, on the way, where it is) ---------- */
+.dv-journey { margin: 8px 0 4px; }
+.dv-journey[hidden] { display: none; }
+.jr-track { position: relative; height: 4px; margin: 8px 8px 0; border-radius: 2px; background: var(--line-2); }
+.jr-fill { position: absolute; top: 0; bottom: 0; inset-inline-start: 0; width: 0; border-radius: 2px; background: var(--text); transition: width 1s var(--dv-ease) 0.25s; }
+.jr-node { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--text); }
+html[dir="rtl"] .jr-node { margin: -6px -6px 0 0; }
+.jr-node.todo { background: var(--card); border: 2px solid var(--muted); }
+.jr-node.active { width: 20px; height: 20px; margin: -10px 0 0 -10px; border: 4px solid var(--card); box-shadow: 0 0 0 1px var(--line-2); }
+html[dir="rtl"] .jr-node.active { margin: -10px -10px 0 0; }
+.jr-node.active::before { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: var(--text); animation: dv-ping 2s ease-out infinite; z-index: -1; }
+@keyframes dv-ping { from { transform: scale(1); opacity: 0.4; } to { transform: scale(2.2); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .jr-node.active::before { animation: none; display: none; } .jr-fill { transition: none; } }
+.jr-labels { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.jr-lab { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; min-width: 0; }
+.jr-lab:first-child { align-items: flex-start; text-align: start; }
+.jr-lab:last-child { align-items: flex-end; text-align: end; }
+.jr-lab svg { width: 16px; height: 16px; color: var(--muted); stroke-width: 1.75; }
+.jr-lab strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 400; color: var(--text-2); }
+.jr-lab.active strong { font-weight: 600; color: var(--text); }
+.jr-lab span { font-size: 12px; color: var(--text-2); }
+
+/* ---------- Activity: a full page like Home and Profile ---------- */
+#view-app[data-tab="history"]:not(.hist-map) #sheet {
+  top: 0; max-height: none !important; overflow-y: auto !important; border-radius: 0; box-shadow: none;
+  padding-top: calc(12px + var(--safe-top));
+}
+#view-app[data-tab="history"]:not(.hist-map) #sheet-handle { display: none; }
+#view-app[data-tab="history"]:not(.hist-map) :is(.topbar, #places-bar, #places-hint, #wx-pill, #back-to-bag, #nav-banner, #battery-banner) { visibility: hidden; }
+#view-app[data-tab="history"] #history-days { display: none !important; }
+#view-app.hist-map[data-tab="history"] #sheet { border-radius: 32px 32px 0 0; }
+.dv-link { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border: 1px solid var(--muted); border-radius: 999px; background: transparent;
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.dv-link svg { width: 16px; height: 16px; stroke-width: 1.75; }
+#hist-jr-row { margin-top: 18px; }
+#hist-jr-row h3 { margin: 0; }
+
+/* ---------- Profile ---------- */
+#panel-account .acc-jump { display: none; }
+#panel-account .r2-head.dv-row { flex-direction: row; align-items: center; }
+#panel-account .r2-head.dv-row > div { display: flex; flex-direction: column; min-width: 0; }
+/* grey icons in plain circles, like the design */
+#panel-account .acc-ic { width: 40px; height: 40px; background: var(--bg); color: var(--muted); }
+#panel-account .acc-ic svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.75; }
+.bag-row .bag-dot { background: var(--primary) !important; color: var(--on-primary); }
+.acc-add { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 56px; margin-top: 8px; border: 1px dashed var(--line-2); border-radius: 24px;
+  background: transparent; color: var(--text-2); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: transform 0.5s var(--dv-spring), color 0.2s ease; }
+.acc-add:hover { color: var(--text); }
+.acc-add:active { transform: scale(0.98); transition-duration: 0.12s; }
+.acc-add svg { width: 16px; height: 16px; stroke-width: 2; }
+.zone-card .zc-name { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 8px; }
+.zone-card .zc-name svg { width: 16px; height: 16px; flex: none; color: var(--muted); stroke-width: 1.75; }
+.zone-card .zc-name strong { margin-top: 0; }
+.batt-row .bag-dot { background: var(--primary) !important; }

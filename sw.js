@@ -2,7 +2,7 @@
 //  - app files: stale-while-revalidate (open instantly from the saved copy, quietly fetch the new one for next time)
 //  - libraries + fonts from the CDN: cache-first (their web addresses include the version, so they never change)
 //  - live data (Supabase, map tiles, place search): always from the network
-const APP = 'trackly-app-v20';
+const APP = 'trackly-app-v21';
 const LIBS = 'trackly-libs-v1';
 const SHELL = [
   './', './index.html', './share.html', './landing.html', './privacy.html', './admin.html',
@@ -13,7 +13,8 @@ const LIB_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.co
 
 self.addEventListener('install', (event) => {
   // each file on its own: one missing file must not stop the others from being saved
-  event.waitUntil(caches.open(APP).then((c) => Promise.all(SHELL.map((u) => c.add(u).catch(() => null)))).then(() => self.skipWaiting()));
+  // cache: 'reload' skips the browser's own short-term copy, so an update never saves a mix of old and new files
+  event.waitUntil(caches.open(APP).then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: 'reload' })).catch(() => null)))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -43,7 +44,8 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(caches.open(APP).then(async (c) => {
     const hit = await c.match(req, { ignoreSearch: req.mode === 'navigate' });
-    const fresh = fetch(req).then((res) => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
+    // 'no-cache': ask the server whether the file changed (cheap when it didn't), never the browser's stale copy
+    const fresh = fetch(req.mode === 'navigate' ? req.url : req, { cache: 'no-cache' }).then((res) => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => null);
     if (hit) { event.waitUntil(fresh); return hit; }
     return (await fresh) || (await c.match('./index.html')) || Response.error();
   }));

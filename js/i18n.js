@@ -202,7 +202,7 @@ window.I18N = {
     time_left: 'Time left', last_seen: 'Last seen',
     silent_note: 'Sound is off so the thief won’t notice the tracker.',
     find_nearby: 'Find nearby', hold_lost: 'Hold: mark lost',
-    hold_help: 'Press and hold the red button for 2 seconds to start live tracking',
+    hold_help: 'Press and hold for 2 seconds to start live tracking',
     share_live: 'Share location', found: 'I found my bag',
     journey: 'Journey', safe_zones: 'Safe zones',
     zones_sub: 'Choose your own places. We’ll notify you when your bag leaves one of them.',
@@ -299,7 +299,11 @@ window.I18N = {
     st_streak: "Day streak",
     my_trackers: "My trackers",
     zone_radius: "Radius {n}",
-    back_profile: "Back to Profile"
+    back_profile: "Back to Profile",
+    more_opts: "More options",
+    see_on_map: "See on map",
+    on_the_way: "On the way",
+    settings: "Settings"
   },
 
   ckb: {
@@ -504,7 +508,7 @@ window.I18N = {
     time_left: 'کاتی ماوە', last_seen: 'دوایین بینین',
     silent_note: 'دەنگ کوژاوەتەوە بۆ ئەوەی دز هەست بە ئامێرەکە نەکات.',
     find_nearby: 'دۆزینەوە لە نزیکەوە', hold_lost: 'دایبگرە: ون بووە',
-    hold_help: 'دوگمە سوورەکە 2 چرکە دابگرە بۆ دەستپێکردنی شوێنکەوتنی ڕاستەوخۆ',
+    hold_help: '2 چرکە دایبگرە بۆ دەستپێکردنی شوێنکەوتنی ڕاستەوخۆ',
     share_live: 'ناردنی شوێن', found: 'جانتاکەم دۆزییەوە',
     journey: 'گەشت', safe_zones: 'ناوچە پارێزراوەکان',
     zones_sub: 'شوێنەکانی خۆت هەڵبژێرە. کاتێک جانتاکەت لە یەکێکیان دەردەچێت ئاگادارت دەکەینەوە.',
@@ -599,7 +603,11 @@ window.I18N = {
     st_streak: "ڕۆژی لەسەر یەک",
     my_trackers: "ئامێرەکانم",
     zone_radius: "نیوەتیرە {n}",
-    back_profile: "گەڕانەوە بۆ پرۆفایل"
+    back_profile: "گەڕانەوە بۆ پرۆفایل",
+    more_opts: "بژاردەی زیاتر",
+    see_on_map: "بینین لەسەر نەخشە",
+    on_the_way: "لە ڕێگادا",
+    settings: "ڕێکخستنەکان"
   },
 
   ar: {
@@ -804,7 +812,7 @@ window.I18N = {
     time_left: 'الوقت المتبقي', last_seen: 'آخر ظهور',
     silent_note: 'الصوت متوقف حتى لا يلاحظ السارق جهاز التتبع.',
     find_nearby: 'البحث بالقرب', hold_lost: 'اضغط مطولاً: مفقودة',
-    hold_help: 'اضغط مع الاستمرار على الزر الأحمر لمدة ثانيتين لبدء التتبع المباشر',
+    hold_help: 'اضغط مع الاستمرار لمدة ثانيتين لبدء التتبع المباشر',
     share_live: 'مشاركة الموقع', found: 'وجدت حقيبتي',
     journey: 'الرحلة', safe_zones: 'المناطق الآمنة',
     zones_sub: 'اختر أماكنك بنفسك. سننبّهك عندما تغادر حقيبتك أحدها.',
@@ -899,6 +907,10 @@ window.I18N = {
     st_streak: "أيام متتالية",
     my_trackers: "أجهزتي",
     zone_radius: "نصف القطر {n}",
-    back_profile: "العودة إلى الملف الشخصي"
+    back_profile: "العودة إلى الملف الشخصي",
+    more_opts: "خيارات أخرى",
+    see_on_map: "عرض على الخريطة",
+    on_the_way: "في الطريق",
+    settings: "الإعدادات"
   }
 };

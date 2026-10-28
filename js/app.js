@@ -8,7 +8,7 @@
   const sb = CFG.fakeBackend ? window.createFakeSupabase() : window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey);
   const ERBIL = [36.1911, 44.0092];
   const LANGS = ['en', 'ckb', 'ar'];
-  const APP_VERSION = '2026.10.28';
+  const APP_VERSION = '2026.10.28b';
 
   // ---------- state ----------
   const state = {
@@ -872,6 +872,7 @@
     const lost = tr.mode === 'lost';
     const loc = state.recent[0];
     updateBadge(tr, loc);
+    scheduleJourney();
 
     $('#bag-name').textContent = tr.name || tr.device_code;
     $('#lost-label').hidden = !lost;
@@ -1133,6 +1134,9 @@
     if (tab !== 'map' && rt.open && !rt.nav) { rt.open = false; rt.seq++; clearRouteLayer(); }
     state.tab = tab;
     $('#view-app').dataset.tab = tab;            // design v2: pages (Home, Profile) cover the map
+    $('#view-app').classList.remove('hist-map');
+    closeDvMore();
+    dvTopbar(tab);
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab || (tab === 'zones' && b.dataset.tab === 'account')));
     $('#panel-home').hidden = tab !== 'home';
     $('#panel-map').hidden = tab !== 'map' || rt.open;
@@ -3123,6 +3127,7 @@
     if (!c) return;
     c.hidden = !n;
     c.textContent = n > 9 ? '9+' : String(n);
+    syncDvDot();
     $('#bell-btn').setAttribute('aria-label', n ? t('alerts_n', { n }) : t('alerts'));
   }
   async function openAlerts() {
@@ -4797,7 +4802,8 @@
       const nm = document.createElement('strong'); nm.textContent = tr.name || tr.device_code;
       const meta = document.createElement('span');
       const loc = state.tracker && state.tracker.id === tr.id ? state.recent[0] : null;
-      meta.textContent = [loc && typeof loc.battery === 'number' ? t('battery') + ' ' + loc.battery + '%' : '', tr.device_code].filter(Boolean).join(' · ');
+      // design v2: code · mode · last update (the battery has its own bar on the right)
+      meta.textContent = [tr.device_code, t(tr.mode === 'lost' ? 'mode_lost' : 'mode_normal'), loc ? lowerFirst(relTime(ageSeconds(loc))) : ''].filter(Boolean).join(' · ');
       txt.append(nm, meta);
       dot.innerHTML = dvIcon('bag');
       row.append(dot, txt);
@@ -5647,9 +5653,11 @@
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'zone-card dv-card'; b.dataset.action = 'open-zone'; b.dataset.id = z.id;
       b.innerHTML = dvIcon('zone');
+      const row = document.createElement('span'); row.className = 'zc-name'; row.innerHTML = kindIcon(z.kind);
       const nm = document.createElement('strong'); nm.textContent = z.name;
+      row.appendChild(nm);
       const r = document.createElement('span'); r.textContent = t('zone_radius', { n: fmtDistance(z.radius_m) });
-      b.append(nm, r);
+      b.append(row, r);
       box.appendChild(b);
     });
     const add = document.createElement('button');
@@ -5665,12 +5673,176 @@
     setTimeout(() => { if (state.tab === 'zones' && !state.zoneEdit) startZoneEdit(z || undefined); }, 420);
   }
 
+  // =====================================================================
+  // DESIGN V2, round 2 — Track top bar + ··· menu, today's journey line, Activity map
+  // =====================================================================
+  // top bar: back · bag name (Track) or a title (Safe zones, Journey map) · ··· (Track)
+  function dvTopbar(tab) {
+    const txt = $('#dv-title-txt');
+    if (!txt) return;
+    const label = tab === 'zones' ? t('safe_zones') : (tab === 'history' ? t('journey') + ' · ' + $('#hist-day').textContent : '');
+    txt.textContent = label;
+    txt.hidden = !label;
+    $('#dv-back').setAttribute('aria-label', tab === 'zones' ? t('back_profile') : t('back'));
+  }
+  function dvBack() {
+    if ($('#view-app').classList.contains('hist-map')) { exitHistMap(); return; }
+    switchTab(state.tab === 'zones' ? 'account' : 'home');
+  }
+
+  // the ··· menu: search, map buttons, places, weather, alerts and the round actions
+  function toggleDvMore() {
+    const m = $('#dv-more');
+    if (!m.hidden) { closeDvMore(); return; }
+    const wx = $('#wx-pill'), wxTxt = wx && !wx.hidden ? wx.textContent.trim() : '';
+    $('#dv-more-wx').hidden = !wxTxt;
+    $('#dv-more-wx-n').textContent = wxTxt;
+    const bc = $('#bell-count'), unread = !!bc && !bc.hidden;
+    $('#dv-more-bell').hidden = !unread;
+    $('#dv-more-bell').textContent = unread ? bc.textContent : '';
+    $('#dv-more-places').setAttribute('aria-checked', String($('#view-app').classList.contains('dv-places') && places.on));
+    $('#style-picker').hidden = true;
+    m.hidden = false;
+    $('#dv-more-btn').setAttribute('aria-expanded', 'true');
+    const first = m.querySelector('button:not([hidden])');
+    if (first) first.focus({ preventScroll: true });
+  }
+  function closeDvMore() {
+    const m = $('#dv-more');
+    if (!m || m.hidden) return;
+    m.hidden = true;
+    $('#dv-more-btn').setAttribute('aria-expanded', 'false');
+  }
+  function syncDvDot() {
+    const bc = $('#bell-count');
+    if ($('#dv-more-dot')) $('#dv-more-dot').hidden = !bc || bc.hidden;
+  }
+  // "Places" shows the category chips (pharmacy, food…) over the map again
+  function toggleDvPlaces() {
+    const v = $('#view-app'), on = !(v.classList.contains('dv-places') && places.on);
+    v.classList.toggle('dv-places', on);
+    if (on && !places.on) togglePlaces();
+  }
+  function bindDv2() {
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('#dv-more').hidden) { closeDvMore(); $('#dv-more-btn').focus(); }
+    });
+    // tapping a stop in the Journey list shows it on the map
+    const tl = $('#timeline');
+    const toMap = (e) => { if (state.tab === 'history' && e.target.closest('.tl-tap') && (e.type === 'click' || e.key === 'Enter')) enterHistMap(false); };
+    tl.addEventListener('click', toMap, true);
+    tl.addEventListener('keydown', toMap, true);
+  }
+
+  // Activity is a page; "See on map" (or a stop, or the replay) shows the route on the map with the card over it
+  function enterHistMap(fit) {
+    const v = $('#view-app');
+    if (state.tab !== 'history' || v.classList.contains('hist-map')) return;
+    v.classList.add('hist-map');
+    dvTopbar('history');
+    requestAnimationFrame(() => {
+      const row = $('#hist-jr-row'), sh = $('#sheet');
+      if (row && sh) sh.scrollTop += row.getBoundingClientRect().top - sh.getBoundingClientRect().top - 8;
+      map.m.invalidateSize();
+      const pts = state.historyPts || [];
+      if (fit && pts.length > 1) map.m.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng])), { paddingTopLeft: [32, 90], paddingBottomRight: [32, coverH() + 24], maxZoom: 16 });
+    });
+  }
+  function exitHistMap() {
+    $('#view-app').classList.remove('hist-map');
+    $('#sheet').scrollTop = 0;
+    dvTopbar(state.tab);
+  }
+
+  // ---- Track: today's journey — the place it left, on the way, where it is now (real stops, 10 min+) ----
+  const jr = { pts: [], for: null, at: 0, busy: false };
+  const JR_PIN = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+  const JR_ROUTE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg>';
+  function scheduleJourney() {
+    clearTimeout(scheduleJourney.t);
+    scheduleJourney.t = setTimeout(loadJourney, 400);
+  }
+  async function loadJourney() {
+    const tr = state.tracker;
+    if (!tr || jr.busy) return;
+    const last = state.recent[0], mine = jr.pts[jr.pts.length - 1];
+    // fetch again for another bag, every 2 min, or (at most every 30 s) when a newer point came in
+    const stale = jr.for !== tr.id || Date.now() - jr.at > 120000 || (last && mine && new Date(last.created_at) > new Date(mine.created_at) && Date.now() - jr.at > 30000);
+    if (stale) {
+      jr.busy = true;
+      try {
+        const start = new Date(); start.setHours(0, 0, 0, 0);
+        const { data } = await sb.from('locations').select('lat, lng, created_at').eq('tracker_id', tr.id)
+          .gte('created_at', start.toISOString()).order('created_at', { ascending: true }).limit(3000);
+        if (state.tracker && state.tracker.id === tr.id) { jr.pts = data || []; jr.for = tr.id; jr.at = Date.now(); }
+      } catch (e) { /* offline: keep the last line */ }
+      jr.busy = false;
+    }
+    renderJourney();
+  }
+  function renderJourney() {
+    const box = $('#dv-journey'), tr = state.tracker;
+    if (!box) return;
+    const pts = tr && jr.for === tr.id ? jr.pts : [];
+    const stops = findStops(pts), last = pts[pts.length - 1];
+    let nodes = null, active = 0;
+    if (last && stops.length) {
+      const s = stops[stops.length - 1];
+      const here = distanceM(last, s) <= 150 && new Date(last.created_at) - new Date(s.to) < 20 * 60000;
+      const fresh = Date.now() - new Date(last.created_at) < 30 * 60000;
+      if (here && stops.length > 1) {
+        const prev = stops[stops.length - 2];
+        nodes = [{ stop: prev, time: prev.to }, { label: t('on_the_way'), time: prev.to, route: true }, { stop: s, time: s.from }];
+        active = 2;
+      } else if (!here && fresh) {
+        nodes = [{ stop: s, time: s.to }, { label: t('on_the_way'), time: null, route: true }];
+        active = 1;
+      }
+    }
+    box.hidden = !nodes;
+    if (!nodes) { box.dataset.key = ''; return; }
+    const key = state.lang + JSON.stringify(nodes.map((x) => [x.stop ? x.stop.from : x.label, x.time])) + active;
+    if (box.dataset.key === key) return;          // nothing new: keep it as it is (no replayed animation)
+    const first = !box.dataset.key;
+    box.dataset.key = key;
+    const n = nodes.length;
+    box.style.setProperty('--n', n);
+    box.innerHTML = '<div class="jr-track" aria-hidden="true"><i class="jr-fill"></i></div><div class="jr-labels"></div>';
+    const track = box.querySelector('.jr-track'), labels = box.querySelector('.jr-labels');
+    nodes.forEach((x, i) => {
+      const st = i < active ? 'done' : (i === active ? 'active' : 'todo');
+      const dot = document.createElement('span');
+      dot.className = 'jr-node ' + st;
+      dot.style.insetInlineStart = (i / (n - 1) * 100) + '%';
+      track.appendChild(dot);
+      const lab = document.createElement('div');
+      lab.className = 'jr-lab' + (st === 'active' ? ' active' : '');
+      lab.setAttribute('role', 'listitem');
+      const z = x.stop ? zoneAt(x.stop) : null;
+      lab.innerHTML = x.route ? JR_ROUTE : (z ? kindIcon(z.kind) : JR_PIN);
+      const nm = document.createElement('strong'), tm = document.createElement('span');
+      nm.textContent = x.label || (z ? z.name : '…');
+      tm.textContent = x.time ? clockTime(x.time) : t('now');
+      lab.append(nm, tm);
+      lab.setAttribute('aria-label', nm.textContent + ', ' + tm.textContent);
+      labels.appendChild(lab);
+      if (x.stop && !z) stopName(x.stop).then((name) => { nm.textContent = name; lab.setAttribute('aria-label', name + ', ' + tm.textContent); });
+    });
+    const fill = box.querySelector('.jr-fill'), pct = (active / (n - 1) * 100) + '%';
+    if (first && !reduceMotion()) requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = pct; }));
+    else fill.style.width = pct;
+  }
+
   // ---------- events ----------
   function bindEvents() {
+    bindDv2();
     document.addEventListener('click', async (e) => {
+      if (!$('#dv-more').hidden && !e.target.closest('#dv-more, #dv-more-btn')) closeDvMore();
       const el = e.target.closest('[data-action]');
       if (!el) return;
       const a = el.dataset.action;
+      if (el.closest('#dv-more')) closeDvMore();
+      if (a === 'replay' && state.tab === 'history') enterHistMap(false);   // the replay plays on the map
       if (a === 'lang') openLangMenu();
       else if (a === 'pick-lang') { setLang(el.dataset.lang); closeLangMenu(); }
       else if (a === 'close-lang') closeLangMenu();
@@ -5686,6 +5858,11 @@
       else if (a === 'find-compass') startCompass(true);
       else if (a === 'find-sound') { requestBuzz(); if (el.classList.contains('btn')) { el.classList.add('ringing'); setTimeout(() => el.classList.remove('ringing'), 3000); } }
       else if (a === 'go-tab') switchTab(el.dataset.target);
+      else if (a === 'dv-back') dvBack();
+      else if (a === 'dv-more') toggleDvMore();
+      else if (a === 'dv-places') toggleDvPlaces();
+      else if (a === 'hist-map') enterHistMap(true);
+      else if (a === 'acc-settings') accJump('acc-look');
       else if (a === 'home-scheme') revealChange(e, () => { applyScheme(isDark() ? 'light' : 'dark'); renderHome(); });
       else if (a === 'act-range') { state.act2Range = el.dataset.range; renderAct2(); }
       else if (a === 'edit-goal') { switchTab('account'); setTimeout(() => accJump('acc-activity'), 380); }
